@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Determine next version
+        id: next_version
+        run: |
+          current="${{ steps.latest_tag.outputs.tag }}"
+          current="${current#v}"
+          IFS='.' read -r major minor patch <<< "$current"
+
+          title="${{ github.event.pull_request.title }}"
+          labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+
+          if echo "$title $labels" | grep -qiE 'breaking|major'; then
+            major=$((major + 1)); minor=0; patch=0
+          elif echo "$title $labels" | grep -qiE 'feat|feature|minor'; then
+            minor=$((minor + 1)); patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          echo "version=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.next_version.outputs.version }}"
+          git tag "$version"
+          git push origin "$version"
+          gh release create "$version" --generate-notes
