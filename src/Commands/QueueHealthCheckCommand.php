@@ -79,9 +79,10 @@ class QueueHealthCheckCommand extends Command
         $alertCount = $flag['alert_count'] ?? 1;
         $lastAlertedAt = Carbon::parse($flag['alerted_at']);
         $nextAlertInMinutes = $this->getNextAlertInterval($repeatInterval, $alertCount);
-        $minutesSinceLastAlert = $lastAlertedAt->diffInMinutes(now());
+        $secondsSinceLastAlert = $lastAlertedAt->diffInSeconds(now());
+        $thresholdSecondsForRepeat = ($nextAlertInMinutes * 60) - 30;
 
-        if ($minutesSinceLastAlert >= $nextAlertInMinutes) {
+        if ($secondsSinceLastAlert >= $thresholdSecondsForRepeat) {
             $this->sendAlert($minutesSince);
             report(new QueueHealthException(
                 "Queue worker has been unresponsive for {$minutesSince} minutes on ".gethostname()

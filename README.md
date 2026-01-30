@@ -52,6 +52,8 @@ Controls how often alerts are re-sent while the queue remains down:
 - **Single value** (e.g. `60`): re-send every 60 minutes
 - **Comma-separated backoff** (e.g. `5,15,30,60`): the first alert is immediate, then re-alert after 5 min, then 15, then 30, then every 60 minutes indefinitely
 
+A 30-second tolerance is applied to repeat intervals to account for cron scheduling jitter, ensuring alerts fire on time rather than being delayed by one cycle.
+
 ```env
 # Re-alert every hour
 QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=60
