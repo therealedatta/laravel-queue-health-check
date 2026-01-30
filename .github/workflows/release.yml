@@ -1,13 +1,17 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [closed]
     branches: [main]
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
 
     permissions:
@@ -18,25 +22,41 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Skip if tag already exists for this commit
+        id: check_tag
+        run: |
+          if git tag --points-at HEAD | grep -q '^v'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Get latest tag
+        if: steps.check_tag.outputs.skip == 'false'
         id: latest_tag
         run: |
           tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Determine next version
+        if: steps.check_tag.outputs.skip == 'false'
         id: next_version
         run: |
           current="${{ steps.latest_tag.outputs.tag }}"
           current="${current#v}"
           IFS='.' read -r major minor patch <<< "$current"
 
-          title="${{ github.event.pull_request.title }}"
-          labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            title="${{ github.event.pull_request.title }}"
+            labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+            source="$title $labels"
+          else
+            source=$(git log -1 --pretty=%s)
+          fi
 
-          if echo "$title $labels" | grep -qiE 'breaking|major'; then
+          if echo "$source" | grep -qiE 'breaking|major'; then
             major=$((major + 1)); minor=0; patch=0
-          elif echo "$title $labels" | grep -qiE 'feat|feature|minor'; then
+          elif echo "$source" | grep -qiE 'feat|feature|minor'; then
             minor=$((minor + 1)); patch=0
           else
             patch=$((patch + 1))
@@ -45,6 +65,7 @@ jobs:
           echo "version=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
 
       - name: Create tag and release
+        if: steps.check_tag.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
