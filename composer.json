@@ -1,0 +1,39 @@
+{
+    "name": "therealedatta/laravel-queue-health-check",
+    "description": "Monitor Laravel queue health with heartbeat checks and email alerts",
+    "keywords": ["laravel", "queue", "health-check", "monitoring"],
+    "license": "MIT",
+    "require": {
+        "php": "^8.1",
+        "illuminate/console": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/mail": "^10.0 || ^11.0 || ^12.0",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.27",
+        "orchestra/testbench": "^8.0 || ^9.0 || ^10.0",
+        "phpunit/phpunit": "^10.0 || ^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "TheRealEdatta\\QueueHealthCheck\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TheRealEdatta\\QueueHealthCheck\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "TheRealEdatta\\QueueHealthCheck\\QueueHealthCheckServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
