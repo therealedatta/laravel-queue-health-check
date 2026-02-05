@@ -5,6 +5,7 @@ namespace TheRealEdatta\QueueHealthCheck;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthCheckCommand;
+use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthTestCommand;
 
 class QueueHealthCheckServiceProvider extends ServiceProvider
 {
@@ -20,7 +21,10 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
         ], 'queue-health-config');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([QueueHealthCheckCommand::class]);
+            $this->commands([
+                QueueHealthCheckCommand::class,
+                QueueHealthTestCommand::class,
+            ]);
         }
 
         $this->app->booted(function () {
