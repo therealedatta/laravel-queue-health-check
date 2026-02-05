@@ -24,8 +24,8 @@ class QueueHealthTestJobTest extends TestCase
         Carbon::setTestNow('2024-01-15 10:00:05');
 
         Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
-            $this->assertStringContainsString('email de prueba', $text);
-            $this->assertStringContainsString('cola está funcionando correctamente', $text);
+            $this->assertStringContainsString('test email', $text);
+            $this->assertStringContainsString('queue is working correctly', $text);
             $this->assertStringContainsString('Dispatched: 2024-01-15 10:00:00', $text);
             $this->assertStringContainsString('Processed: 2024-01-15 10:00:05', $text);
             $this->assertStringContainsString('Delay: 5s', $text);
@@ -49,7 +49,7 @@ class QueueHealthTestJobTest extends TestCase
         Carbon::setTestNow('2024-01-15 10:03:00');
 
         Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
-            $this->assertStringContainsString('con retraso (180s)', $text);
+            $this->assertStringContainsString('delay of 180s', $text);
 
             $message = Mockery::mock(Message::class);
             $message->shouldReceive('to')->with('user@example.com')->andReturnSelf();

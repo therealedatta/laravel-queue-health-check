@@ -39,10 +39,10 @@ class QueueHealthTestJob implements ShouldQueue
             : '['.config('app.name').'] Queue test: everything is working';
 
         $statusLine = $isDelayed
-            ? "⚠️ La cola está funcionando, pero con retraso ({$delaySeconds}s)."
-            : '✅ Si estás leyendo esto, la cola está funcionando correctamente.';
+            ? "⚠️ The queue is working, but with a delay of {$delaySeconds}s."
+            : '✅ If you are reading this, the queue is working correctly.';
 
-        $body = "Este es un email de prueba para verificar que la cola de trabajos funciona correctamente.\n\n"
+        $body = "This is a test email to verify that the job queue is working correctly.\n\n"
             ."{$statusLine}\n\n"
             ."Dispatched: {$this->dispatchedAt}\n"
             ."Processed: {$processedAt->format('Y-m-d H:i:s')}\n"
