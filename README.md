@@ -62,6 +62,24 @@ QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=60
 QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=5,15,30,60
 ```
 
+## Manual Queue Test
+
+You can manually verify the queue is working by dispatching a test email:
+
+```bash
+php artisan queue-health:test user@example.com
+```
+
+If no email is provided, it falls back to the configured `QUEUE_HEALTH_ALERT_EMAIL`:
+
+```bash
+php artisan queue-health:test
+```
+
+The command dispatches a job through the queue. When the worker processes it, it sends an email with timing information (dispatch time, processing time, and delay). If the delay exceeds 60 seconds, the email subject and body will flag it as a warning.
+
+If no email is configured at all, the command reports a `QueueHealthException` to your error tracking service so the misconfiguration doesn't go unnoticed.
+
 ### Error Tracking Integration
 
 Each time an alert is sent, the package calls `report(new QueueHealthException(...))`. This means any error tracking service configured in your Laravel app (Bugsnag, Sentry, Flare, etc.) will automatically receive the exception — providing a secondary alert channel that doesn't depend on email delivery.
@@ -81,19 +99,21 @@ Make sure `php artisan schedule:run` is in your crontab:
 
 ```
 src/
-├── QueueHealthCheckServiceProvider.php   # Registers config, command, and schedule
+├── QueueHealthCheckServiceProvider.php   # Registers config, commands, and schedule
 ├── Commands/
-│   └── QueueHealthCheckCommand.php       # Checks heartbeat, sends alert/recovery emails
+│   ├── QueueHealthCheckCommand.php       # Checks heartbeat, sends alert/recovery emails
+│   └── QueueHealthTestCommand.php        # Manual test: dispatches a test email via the queue
 ├── Exceptions/
 │   └── QueueHealthException.php          # Reported to error tracking services
 └── Jobs/
-    └── QueueHealthCheckJob.php           # Writes heartbeat timestamp to file
+    ├── QueueHealthCheckJob.php           # Writes heartbeat timestamp to file
+    └── QueueHealthTestJob.php            # Sends test email with timing diagnostics
 ```
 
 ### ServiceProvider
 
 - Merges and publishes the config file
-- Registers the artisan command
+- Registers the artisan commands
 - Schedules `queue-health:check` via `$schedule->command()->cron()` based on the configured interval
 
 ### QueueHealthCheckJob
@@ -132,6 +152,11 @@ Tests use Orchestra Testbench and cover:
 10. Recent heartbeat, flag exists → sends recovery email, removes flag
 11. Multiple recipients
 12. Job writes heartbeat file correctly
+13. Test command dispatches job with provided email
+14. Test command falls back to config email
+15. Test command reports exception when no email configured
+16. Test job sends email with timing info
+17. Test job warns when queue processing is delayed
 
 ## License
 
