@@ -19,6 +19,18 @@ class QueueHealthTestCommandTest extends TestCase
         Queue::assertPushed(QueueHealthTestJob::class);
     }
 
+    public function test_dispatches_job_with_multiple_comma_separated_emails(): void
+    {
+        Queue::fake();
+
+        $this->artisan('queue-health:test', ['email' => 'user1@example.com,user2@example.com'])
+            ->assertSuccessful();
+
+        Queue::assertPushed(QueueHealthTestJob::class, function ($job) {
+            return (new \ReflectionProperty($job, 'email'))->getValue($job) === 'user1@example.com,user2@example.com';
+        });
+    }
+
     public function test_uses_config_email_when_no_argument(): void
     {
         config()->set('queue-health.alert_email', 'admin@example.com');

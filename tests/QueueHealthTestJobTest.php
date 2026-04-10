@@ -41,6 +41,25 @@ class QueueHealthTestJobTest extends TestCase
         $job->handle();
     }
 
+    public function test_sends_to_multiple_comma_separated_emails(): void
+    {
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        $job = new QueueHealthTestJob('user1@example.com, user2@example.com');
+
+        Carbon::setTestNow('2024-01-15 10:00:05');
+
+        Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
+            $message = Mockery::mock(Message::class);
+            $message->shouldReceive('to')->with(['user1@example.com', 'user2@example.com'])->andReturnSelf();
+            $message->shouldReceive('subject')->andReturnSelf();
+            $callback($message);
+
+            return true;
+        });
+
+        $job->handle();
+    }
+
     public function test_warns_when_queue_is_delayed(): void
     {
         Carbon::setTestNow('2024-01-15 10:00:00');
