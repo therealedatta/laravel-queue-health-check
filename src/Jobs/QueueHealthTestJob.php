@@ -49,10 +49,12 @@ class QueueHealthTestJob implements ShouldQueue
             ."Delay: {$delaySeconds}s\n\n"
             .'Server: '.gethostname();
 
+        $recipients = array_map('trim', explode(',', $this->email));
+
         Mail::raw(
             $body,
-            function ($message) use ($subject) {
-                $message->to($this->email)
+            function ($message) use ($subject, $recipients) {
+                $message->to($recipients)
                     ->subject($subject);
             }
         );

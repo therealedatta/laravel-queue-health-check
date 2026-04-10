@@ -31,7 +31,7 @@ class QueueHealthTestJobTest extends TestCase
             $this->assertStringContainsString('Delay: 5s', $text);
 
             $message = Mockery::mock(Message::class);
-            $message->shouldReceive('to')->with('user@example.com')->andReturnSelf();
+            $message->shouldReceive('to')->with(['user@example.com'])->andReturnSelf();
             $message->shouldReceive('subject')->with(Mockery::on(fn ($s) => str_contains($s, 'everything is working')))->andReturnSelf();
             $callback($message);
 
@@ -52,7 +52,7 @@ class QueueHealthTestJobTest extends TestCase
             $this->assertStringContainsString('delay of 180s', $text);
 
             $message = Mockery::mock(Message::class);
-            $message->shouldReceive('to')->with('user@example.com')->andReturnSelf();
+            $message->shouldReceive('to')->with(['user@example.com'])->andReturnSelf();
             $message->shouldReceive('subject')->with(Mockery::on(fn ($s) => str_contains($s, 'but with delay')))->andReturnSelf();
             $callback($message);
 
