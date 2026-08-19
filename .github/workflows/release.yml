@@ -34,27 +34,31 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Get latest tag
-        if: steps.check_tag.outputs.skip == 'false'
-        id: latest_tag
+      - name: Find the previous release
+        id: previous
         run: |
-          tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          tag=$(git tag --list 'v*' --sort=-v:refname | grep -v "^${{ steps.check_tag.outputs.version }}$" | head -1)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Determine next version
         if: steps.check_tag.outputs.skip == 'false'
         id: next_version
         run: |
-          current="${{ steps.latest_tag.outputs.tag }}"
+          previous="${{ steps.previous.outputs.tag }}"
+          current="${previous:-v0.0.0}"
           current="${current#v}"
           IFS='.' read -r major minor patch <<< "$current"
 
+          # every commit since the previous release counts, or a batch ending in a
+          # docs commit would ship features as a patch.
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             title="${{ github.event.pull_request.title }}"
             labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
             source="$title $labels"
+          elif [ -n "$previous" ]; then
+            source=$(git log "$previous"..HEAD --pretty=%s)
           else
-            source=$(git log -1 --pretty=%s)
+            source=$(git log --pretty=%s)
           fi
 
           if echo "$source" | grep -qiE 'breaking|major'; then
@@ -90,4 +94,17 @@ jobs:
             exit 0
           fi
 
-          gh release create "$version" --generate-notes
+          # notes come from the commits, not from --generate-notes: work lands
+          # straight on main here, so there are no pull requests to list.
+          previous="${{ steps.previous.outputs.tag }}"
+
+          if [ -n "$previous" ]; then
+            notes=$(git log "$previous"..HEAD --pretty='- %s')
+            notes="$notes
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/$previous...$version"
+          else
+            notes=$(git log HEAD --pretty='- %s')
+          fi
+
+          gh release create "$version" --notes "$notes"
