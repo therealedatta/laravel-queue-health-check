@@ -19,8 +19,8 @@ It also covers the two cases a plain heartbeat check misses: a queue that has **
 
 | Issue | Detected when | First email |
 |---|---|---|
-| `no_heartbeat` | there is no readable heartbeat file | after one full check window |
-| `down` | the heartbeat is older than the threshold | immediately |
+| `no_heartbeat` | there is no readable heartbeat file | after `check_interval_minutes * 2` (10 minutes by default) |
+| `down` | the heartbeat is older than `check_interval_minutes * 2` | immediately |
 | `sync` | the monitored connection uses the `sync` driver | immediately |
 
 ### Right After Installing
@@ -34,14 +34,26 @@ So a deploy that never starts a worker is caught on its own, with no manual step
 
 ### The sync Driver
 
-With the `sync` driver the heartbeat job would run inline inside the check command, so the queue would always look perfectly healthy. Instead of reporting a false green, the command refuses to monitor: it sends `WARNING: Queue health is not being monitored`, reports a `QueueHealthException`, exits with a non-zero status and dispatches no heartbeat.
+With the `sync` driver the heartbeat job would run inline inside the check command, so the queue would always look perfectly healthy. Instead of reporting a false green, the command refuses to monitor: it sends `WARNING: Queue health is not being monitored`, reports a `QueueHealthException` and dispatches no heartbeat.
+
+Only the run that actually sends that warning exits with a non-zero status. Once the incident is on record the following runs exit `0`, so a lasting misconfiguration does not turn every scheduled run red.
 
 ### State Files
 
+Both files live in `queue-health.storage_path`, which defaults to `storage/logs`:
+
 | File | Purpose |
 |---|---|
-| `storage/logs/queue-health.log` | ISO 8601 timestamp of the last successful job execution |
-| `storage/logs/queue-health-alert.flag` | JSON incident state (`issue`, `detected_at`, `alerted_at`, `alert_count`). Exists only while the queue is unhealthy. |
+| `queue-health.log` | ISO 8601 timestamp of the last successful job execution |
+| `queue-health-alert.flag` | JSON incident state (`issue`, `detected_at`, `alerted_at`, `alert_count`). Exists only while the queue is unhealthy. |
+
+**Move the directory if anything on your servers prunes logs.** These are state, not logs: a `logrotate` rule or a `find storage/logs -mtime +7 -delete` that removes the heartbeat looks exactly like a queue that never started, and you get a false `no_heartbeat` alert.
+
+```env
+QUEUE_HEALTH_STORAGE_PATH=/var/www/app/storage/app/queue-health
+```
+
+The directory is created on first write, and the path is resolved on every call, so it also follows `useStoragePath()` in tests and is never baked into a cached config file.
 
 An empty or unparseable heartbeat file counts as *no heartbeat*, never as a healthy queue. An unreadable flag file is treated as a fresh incident.
 
@@ -68,6 +80,7 @@ QUEUE_HEALTH_CHECK_INTERVAL=5
 | `QUEUE_HEALTH_ALERT_REPEAT_INTERVAL` | Alert repeat interval in minutes (see below) | `null` (one alert per incident) |
 | `QUEUE_HEALTH_CONNECTION` | Queue connection to monitor | app default |
 | `QUEUE_HEALTH_QUEUE` | Queue name to monitor | connection default |
+| `QUEUE_HEALTH_STORAGE_PATH` | Directory for the heartbeat and the alert flag | `storage/logs` |
 
 If `QUEUE_HEALTH_ALERT_EMAIL` is missing or empty, the package does nothing.
 
@@ -89,6 +102,36 @@ QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=60
 
 # Backoff: immediate → 5min → 15min → 30min → every 60min
 QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=5,15,30,60
+```
+
+## Checking The Installation
+
+`queue-health:status` prints everything the monitor knows and touches nothing — no email, no job, no state written. It is the first thing to run after installing:
+
+```bash
+php artisan queue-health:status
+```
+
+```
++-----------------------+----------------------------------------------------------+
+| Item                  | Value                                                    |
++-----------------------+----------------------------------------------------------+
+| Status                | unresponsive                                             |
+| Recipients            | admin@example.com                                        |
+| Connection            | redis (redis)                                            |
+| Queue                 | default                                                  |
+| State directory       | /var/www/app/storage/logs                                |
+| Last heartbeat        | 2024-01-15T09:45:00+00:00 (15 minutes ago)               |
+| Considered down after | 10 minutes without a heartbeat                           |
+| Open incident         | down since 2024-01-15T09:48:00+00:00, 2 alert(s) sent    |
+| Next alert            | 2024-01-15T10:48:00+00:00 (48 minutes from now)          |
++-----------------------+----------------------------------------------------------+
+```
+
+It exits with a non-zero status when the queue is unhealthy, so it can be chained in a deploy check:
+
+```bash
+php artisan queue-health:status || echo "queue is not healthy"
 ```
 
 ## Manual Queue Test
@@ -146,6 +189,8 @@ Make sure `php artisan schedule:run` is in your crontab:
 * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
 ```
 
+The check is registered with `withoutOverlapping()` and `runInBackground()`, so a mailer that hangs cannot pile up runs or hold back the rest of your scheduled tasks. The overlap lock expires after two check intervals rather than Laravel's 24-hour default, so a run killed before releasing it cannot silence the monitor for a day.
+
 ## Architecture
 
 ```
@@ -153,6 +198,7 @@ src/
 ├── QueueHealthCheckServiceProvider.php   # Registers config, commands, and schedule
 ├── Commands/
 │   ├── QueueHealthCheckCommand.php       # Checks heartbeat, sends alert/recovery emails
+│   ├── QueueHealthStatusCommand.php      # Read-only report of the current state
 │   └── QueueHealthTestCommand.php        # Manual test: dispatches a test email via the queue
 ├── Enums/
 │   └── HealthIssue.php                   # no_heartbeat | down | sync
@@ -168,19 +214,20 @@ src/
     ├── AlertFlag.php                     # Reads and writes the incident flag file
     ├── AlertState.php                    # Incident state value object
     ├── Heartbeat.php                     # Reads and writes the heartbeat file
-    └── Settings.php                      # Package configuration access
+    ├── Settings.php                      # Package configuration access
+    └── StateFile.php                     # Shared path, locking and directory handling
 ```
 
 ### ServiceProvider
 
 - Merges and publishes the config file
 - Registers the artisan commands
-- Schedules `queue-health:check` via `$schedule->command()->cron()` based on the configured interval
+- Schedules `queue-health:check` via `$schedule->command()->cron()`, without overlapping and in the background
 
 ### QueueHealthCheckJob
 
 - Implements `ShouldQueue` with 3 retries and a flat 5s backoff
-- Writes `now()->toIso8601String()` to `storage/logs/queue-health.log`
+- Writes `now()->toIso8601String()` to the heartbeat file
 
 ### QueueHealthCheckCommand
 
@@ -190,6 +237,7 @@ src/
 - Recovery subjects: `[AppName] RECOVERED: Queue worker is back`, `[AppName] OK: Queue worker is running`
 - All emails are sent synchronously via `Mail::raw()`
 - Reports `QueueHealthException` via `report()` on each alert
+- Exits non-zero only on a run that raises the `sync` misconfiguration alert; a down queue is not a failure of the check itself
 
 ## Testing
 
@@ -199,7 +247,13 @@ vendor/bin/phpunit
 vendor/bin/pint --test
 ```
 
-Tests use Orchestra Testbench and cover the full state machine: the silent first run, the grace period before a missing heartbeat becomes an alert, the confirmation email once the first heartbeat lands, downtime detection and recovery, the repeat and backoff schedules, the `sync` refusal, unreadable state files, mail failures, multiple recipients, the configured connection and queue, the schedule expression, and both commands end to end.
+Tests use Orchestra Testbench and cover the full state machine: the silent first run, the grace period before a missing heartbeat becomes an alert, the confirmation email once the first heartbeat lands, downtime detection and recovery, the repeat and backoff schedules, the `sync` refusal and its exit codes, unreadable state files, mail failures, multiple recipients, the configured connection and queue, a relocated state directory, the schedule expression and its overlap guard, and the three commands end to end.
+
+Point `queue-health.storage_path` at a temporary directory in your own suite so the package never writes into your real `storage/`, which also keeps parallel test workers from sharing state:
+
+```php
+config()->set('queue-health.storage_path', sys_get_temp_dir().'/queue-health-'.getmypid());
+```
 
 ## Development
 
