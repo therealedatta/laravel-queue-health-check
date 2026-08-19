@@ -76,6 +76,40 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
     }
 
+    public function test_does_not_read_an_empty_heartbeat_as_a_recovery(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, '');
+        file_put_contents($this->flagPath, json_encode([
+            'alerted_at' => Carbon::now()->subMinutes(10)->toIso8601String(),
+            'alert_count' => 1,
+        ]));
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        $this->assertFileExists($this->flagPath);
+    }
+
+    public function test_does_not_fail_when_the_heartbeat_cannot_be_parsed(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, 'truncated');
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+    }
+
     public function test_sends_alert_when_heartbeat_is_old(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');

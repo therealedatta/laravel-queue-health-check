@@ -3,6 +3,7 @@
 namespace TheRealEdatta\QueueHealthCheck\Support;
 
 use Carbon\Carbon;
+use Throwable;
 
 class Heartbeat
 {
@@ -22,6 +23,16 @@ class Heartbeat
             return null;
         }
 
-        return Carbon::parse(file_get_contents($this->path()));
+        $timestamp = trim((string) file_get_contents($this->path()));
+
+        if ($timestamp === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($timestamp);
+        } catch (Throwable) {
+            return null;
+        }
     }
 }
