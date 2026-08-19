@@ -121,9 +121,11 @@ class QueueHealthCheckCommand extends Command
             return;
         }
 
-        event(new QueueHealthy($state->issue, $this->hostname()));
+        $downtimeMinutes = (int) floor($state->detectedAt->diffInSeconds(now()) / 60);
 
-        $this->sendRecoveryMail($state->issue);
+        event(new QueueHealthy($state->issue, $downtimeMinutes, $this->hostname()));
+
+        $this->sendRecoveryMail($state->issue, $downtimeMinutes);
     }
 
     private function raiseAlert(AlertState $state, ?int $minutesSince): void
@@ -188,7 +190,7 @@ class QueueHealthCheckCommand extends Command
             .$detail."\nServer: ".$this->hostname());
     }
 
-    private function sendRecoveryMail(HealthIssue $issue): void
+    private function sendRecoveryMail(HealthIssue $issue, int $downtimeMinutes): void
     {
         [$subject, $status] = match ($issue) {
             HealthIssue::NoHeartbeat => ['OK: Queue worker is running', '✅ Queue worker is running and health monitoring is now active.'],
@@ -196,7 +198,11 @@ class QueueHealthCheckCommand extends Command
             HealthIssue::SyncDriver => ['OK: Queue health is being monitored again', '✅ The queue connection no longer uses the sync driver.'],
         };
 
-        $this->sendMail($subject, $status."\n\nServer: ".$this->hostname());
+        $downtime = $issue === HealthIssue::Down
+            ? "Downtime: {$downtimeMinutes} minutes\n"
+            : '';
+
+        $this->sendMail($subject, $status."\n\n".$downtime.'Server: '.$this->hostname());
     }
 
     private function sendMail(string $subject, string $body): void

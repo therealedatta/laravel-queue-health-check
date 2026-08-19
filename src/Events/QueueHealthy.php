@@ -8,6 +8,7 @@ class QueueHealthy
 {
     public function __construct(
         public readonly HealthIssue $previousIssue,
+        public readonly int $downtimeMinutes,
         public readonly string $hostname,
     ) {}
 }

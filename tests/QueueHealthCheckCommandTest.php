@@ -451,6 +451,7 @@ class QueueHealthCheckCommandTest extends TestCase
 
         Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
             $this->assertStringContainsString('recovered', $text);
+            $this->assertStringContainsString('Downtime: 10 minutes', $text);
 
             $message = Mockery::mock(Message::class);
             $message->shouldReceive('to')->with(['test@example.com'])->andReturnSelf();
@@ -509,7 +510,8 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
 
         Event::assertDispatched(QueueHealthy::class, function (QueueHealthy $event) {
-            return $event->previousIssue === HealthIssue::Down;
+            return $event->previousIssue === HealthIssue::Down
+                && $event->downtimeMinutes === 20;
         });
     }
 
