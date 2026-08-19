@@ -5,10 +5,14 @@ namespace TheRealEdatta\QueueHealthCheck\Tests;
 use Carbon\Carbon;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Symfony\Component\Mailer\Exception\TransportException;
+use TheRealEdatta\QueueHealthCheck\Enums\HealthIssue;
+use TheRealEdatta\QueueHealthCheck\Events\QueueHealthy;
+use TheRealEdatta\QueueHealthCheck\Events\QueueUnhealthy;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
 
@@ -459,6 +463,54 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
 
         $this->assertFileDoesNotExist($this->flagPath);
+    }
+
+    public function test_dispatches_an_event_when_the_queue_is_unhealthy(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+        Event::fake([QueueUnhealthy::class]);
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+
+        $this->expectsReport(QueueHealthException::class);
+
+        Mail::shouldReceive('raw')->once();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        Event::assertDispatched(QueueUnhealthy::class, function (QueueUnhealthy $event) {
+            return $event->issue === HealthIssue::Down
+                && $event->minutes === 15
+                && $event->alertCount === 1;
+        });
+    }
+
+    public function test_dispatches_an_event_when_the_queue_recovers(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+        Event::fake([QueueHealthy::class]);
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(3)->toIso8601String());
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'down',
+            'detected_at' => Carbon::now()->subMinutes(20)->toIso8601String(),
+            'alerted_at' => Carbon::now()->subMinutes(20)->toIso8601String(),
+            'alert_count' => 1,
+        ]));
+
+        Mail::shouldReceive('raw')->once();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        Event::assertDispatched(QueueHealthy::class, function (QueueHealthy $event) {
+            return $event->previousIssue === HealthIssue::Down;
+        });
     }
 
     public function test_supports_multiple_recipients(): void

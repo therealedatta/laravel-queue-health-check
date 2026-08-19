@@ -5,6 +5,8 @@ namespace TheRealEdatta\QueueHealthCheck\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 use TheRealEdatta\QueueHealthCheck\Enums\HealthIssue;
+use TheRealEdatta\QueueHealthCheck\Events\QueueHealthy;
+use TheRealEdatta\QueueHealthCheck\Events\QueueUnhealthy;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
 use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
@@ -119,6 +121,8 @@ class QueueHealthCheckCommand extends Command
             return;
         }
 
+        event(new QueueHealthy($state->issue, $this->hostname()));
+
         $this->sendRecoveryMail($state->issue);
     }
 
@@ -136,6 +140,8 @@ class QueueHealthCheckCommand extends Command
             now(),
             $state->alertCount + 1,
         ));
+
+        event(new QueueUnhealthy($state->issue, $minutes, $state->alertCount + 1, $this->hostname()));
 
         $this->sendAlertMail($state->issue, $minutes);
     }
