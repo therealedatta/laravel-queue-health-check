@@ -149,6 +149,8 @@ It exits with a non-zero status when the queue is unhealthy, so it can be chaine
 php artisan queue-health:status || echo "queue is not healthy"
 ```
 
+A freshly installed package has no heartbeat yet, and that is not a failure: `no_heartbeat` only fails once the grace period has passed, so using this as a deploy gate is safe on the very first run. A dead worker, a stale heartbeat and the `sync` driver all fail immediately.
+
 ## Manual Queue Test
 
 You can manually verify the queue is working by dispatching a test email:

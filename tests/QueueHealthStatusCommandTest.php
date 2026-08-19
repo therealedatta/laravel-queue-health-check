@@ -79,14 +79,52 @@ class QueueHealthStatusCommandTest extends TestCase
             ->assertFailed();
     }
 
-    public function test_reports_a_missing_heartbeat_and_fails(): void
+    public function test_does_not_fail_on_a_fresh_install(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');
         Queue::fake();
 
         $this->artisan('queue-health:status')
-            ->expectsOutputToContain('no heartbeat yet')
+            ->expectsOutputToContain('still within the grace period')
             ->expectsOutputToContain('never')
+            ->assertSuccessful();
+    }
+
+    public function test_does_not_fail_while_the_first_heartbeat_is_still_pending(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'no_heartbeat',
+            'detected_at' => Carbon::now()->subMinutes(4)->toIso8601String(),
+            'alerted_at' => null,
+            'alert_count' => 0,
+        ]));
+
+        $this->artisan('queue-health:status')
+            ->expectsOutputToContain('still within the grace period')
+            ->assertSuccessful();
+    }
+
+    public function test_fails_once_the_first_heartbeat_is_overdue(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'no_heartbeat',
+            'detected_at' => Carbon::now()->subMinutes(15)->toIso8601String(),
+            'alerted_at' => null,
+            'alert_count' => 0,
+        ]));
+
+        $this->artisan('queue-health:status')
+            ->expectsOutputToContain('the worker is not running')
             ->assertFailed();
     }
 
@@ -111,6 +149,6 @@ class QueueHealthStatusCommandTest extends TestCase
             ->expectsOutputToContain('redis')
             ->expectsOutputToContain('monitoring')
             ->expectsOutputToContain('not configured')
-            ->assertFailed();
+            ->assertSuccessful();
     }
 }

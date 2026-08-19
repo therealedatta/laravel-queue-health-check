@@ -29,10 +29,11 @@ class QueueHealthStatusCommand extends Command
         $lastSeenAt = $this->heartbeat->lastSeenAt();
         $state = $this->flag->read();
         $issue = $this->currentIssue($lastSeenAt);
+        $unhealthy = $this->isUnhealthy($issue, $state);
         $connection = Settings::connection() ?? config('queue.default');
 
         $this->table(['Item', 'Value'], [
-            ['Status', $this->statusLabel($issue)],
+            ['Status', $this->statusLabel($issue, $unhealthy)],
             ['Recipients', $recipients === [] ? 'not configured, alerting is disabled' : implode(', ', $recipients)],
             ['Connection', $connection.' ('.(Settings::connectionDriver() ?? 'unknown driver').')'],
             ['Queue', Settings::queue() ?? 'default'],
@@ -43,7 +44,30 @@ class QueueHealthStatusCommand extends Command
             ['Next alert', $this->nextAlertLabel($state)],
         ]);
 
-        return $issue === null ? self::SUCCESS : self::FAILURE;
+        return $unhealthy ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * A missing heartbeat is still normal on a fresh install, so the command only
+     * fails once the grace period the check command itself waits has passed. That
+     * keeps it usable as a deploy gate on the very first run.
+     */
+    private function isUnhealthy(?HealthIssue $issue, ?AlertState $state): bool
+    {
+        if ($issue === null) {
+            return false;
+        }
+
+        if ($issue !== HealthIssue::NoHeartbeat) {
+            return true;
+        }
+
+        if ($state === null || $state->issue !== HealthIssue::NoHeartbeat) {
+            return false;
+        }
+
+        return $state->alertCount > 0
+            || $state->detectedAt->diffInSeconds(now()) >= Settings::downThresholdSeconds();
     }
 
     private function currentIssue(?CarbonInterface $lastSeenAt): ?HealthIssue
@@ -63,11 +87,13 @@ class QueueHealthStatusCommand extends Command
         return null;
     }
 
-    private function statusLabel(?HealthIssue $issue): string
+    private function statusLabel(?HealthIssue $issue, bool $unhealthy): string
     {
         return match ($issue) {
             null => 'healthy',
-            HealthIssue::NoHeartbeat => 'no heartbeat yet',
+            HealthIssue::NoHeartbeat => $unhealthy
+                ? 'no heartbeat, the worker is not running'
+                : 'no heartbeat yet, still within the grace period',
             HealthIssue::Down => 'unresponsive',
             HealthIssue::SyncDriver => 'not monitored, the connection uses the sync driver',
         };
