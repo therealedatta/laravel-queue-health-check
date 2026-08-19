@@ -99,6 +99,26 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->assertEquals('sync', $flag['issue']);
     }
 
+    public function test_stops_failing_once_the_sync_warning_has_been_sent(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.alert_repeat_interval', null);
+        config()->set('queue.default', 'sync');
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'sync',
+            'detected_at' => Carbon::now()->subMinutes(30)->toIso8601String(),
+            'alerted_at' => Carbon::now()->subMinutes(30)->toIso8601String(),
+            'alert_count' => 1,
+        ]));
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+    }
+
     public function test_does_not_alert_on_the_first_run_without_a_heartbeat(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');

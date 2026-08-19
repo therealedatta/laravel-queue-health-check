@@ -36,9 +36,10 @@ class QueueHealthCheckCommand extends Command
 
         if (Settings::connectionDriver() === 'sync') {
             $this->error('queue-health cannot monitor anything: the queue connection uses the sync driver.');
-            $this->handleIssue(HealthIssue::SyncDriver);
 
-            return self::FAILURE;
+            // only the run that raises the alert fails, so a lasting misconfiguration
+            // does not turn every scheduled run red once it has been reported.
+            return $this->handleIssue(HealthIssue::SyncDriver) ? self::FAILURE : self::SUCCESS;
         }
 
         $this->checkLastHeartbeat();
@@ -71,7 +72,7 @@ class QueueHealthCheckCommand extends Command
         $this->handleRecovery();
     }
 
-    private function handleIssue(HealthIssue $issue, ?int $minutesSince = null): void
+    private function handleIssue(HealthIssue $issue, ?int $minutesSince = null): bool
     {
         $state = $this->flag->read();
 
@@ -81,34 +82,40 @@ class QueueHealthCheckCommand extends Command
             if ($issue->needsGracePeriod()) {
                 $this->flag->write($state);
 
-                return;
+                return false;
             }
 
             $this->raiseAlert($state, $minutesSince);
 
-            return;
+            return true;
         }
 
         if ($state->alertCount === 0) {
-            if ($state->detectedAt->diffInSeconds(now()) >= $this->thresholdSeconds()) {
-                $this->raiseAlert($state, $minutesSince);
+            if ($state->detectedAt->diffInSeconds(now()) < $this->thresholdSeconds()) {
+                return false;
             }
 
-            return;
+            $this->raiseAlert($state, $minutesSince);
+
+            return true;
         }
 
         $repeatInterval = Settings::alertRepeatInterval();
 
         if ($repeatInterval === null) {
-            return;
+            return false;
         }
 
         $nextAlertInMinutes = $this->getNextAlertInterval($repeatInterval, $state->alertCount);
         $thresholdSecondsForRepeat = ($nextAlertInMinutes * 60) - 30;
 
-        if ($state->alertedAt->diffInSeconds(now()) >= $thresholdSecondsForRepeat) {
-            $this->raiseAlert($state, $minutesSince);
+        if ($state->alertedAt->diffInSeconds(now()) < $thresholdSecondsForRepeat) {
+            return false;
         }
+
+        $this->raiseAlert($state, $minutesSince);
+
+        return true;
     }
 
     private function handleRecovery(): void
