@@ -3,6 +3,7 @@
 namespace TheRealEdatta\QueueHealthCheck\Support;
 
 use Illuminate\Support\Facades\File;
+use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 
 abstract class StateFile
 {
@@ -62,11 +63,31 @@ abstract class StateFile
             $legacy = rtrim($directory, '/').'/'.$this->legacyFilename();
 
             if (file_exists($legacy)) {
-                File::ensureDirectoryExists(dirname($this->path()));
-                @rename($legacy, $this->path());
+                $this->adopt($legacy);
 
                 return;
             }
         }
+    }
+
+    private function adopt(string $legacy): void
+    {
+        File::ensureDirectoryExists(dirname($this->path()));
+
+        if (@rename($legacy, $this->path())) {
+            return;
+        }
+
+        // rename cannot move across filesystems, which a relocated state
+        // directory may well be. Copying keeps the state either way.
+        if (@copy($legacy, $this->path())) {
+            @unlink($legacy);
+
+            return;
+        }
+
+        report(new QueueHealthException(
+            "queue-health could not adopt {$legacy}: the monitoring state will be rebuilt from scratch"
+        ));
     }
 }

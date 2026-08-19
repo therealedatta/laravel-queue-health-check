@@ -3,7 +3,6 @@
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
 use Carbon\Carbon;
-use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
@@ -596,18 +595,5 @@ class QueueHealthCheckCommandTest extends TestCase
         });
 
         $this->artisan('queue-health:check')->assertSuccessful();
-    }
-
-    private function expectsReport(string ...$exceptionClasses): void
-    {
-        $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClasses) {
-            $handler = Mockery::mock(Handler::class.'[report]', [$app]);
-
-            foreach ($exceptionClasses as $exceptionClass) {
-                $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
-            }
-
-            return $handler;
-        });
     }
 }

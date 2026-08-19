@@ -130,7 +130,7 @@ QUEUE_HEALTH_ALERT_REPEAT_INTERVAL=5,15,30,60
 
 ## Checking The Installation
 
-`queue-health:status` prints everything the monitor knows and touches nothing — no email, no job, no state written. It is the first thing to run after installing:
+`queue-health:status` prints everything the monitor knows: it sends no email, queues no job and never changes the monitoring state. The one exception is mechanical — like any other read, the first one after upgrading from 1.3 or earlier renames a pre-1.4 state file into place. It is the first thing to run after installing:
 
 ```bash
 php artisan queue-health:status

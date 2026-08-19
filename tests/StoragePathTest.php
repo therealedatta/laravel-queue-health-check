@@ -3,11 +3,9 @@
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
 use Carbon\Carbon;
-use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
-use Mockery;
 use TheRealEdatta\QueueHealthCheck\Enums\HealthIssue;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
@@ -27,6 +25,7 @@ class StoragePathTest extends TestCase
 
     protected function tearDown(): void
     {
+        @chmod($this->directory, 0700);
         File::deleteDirectory($this->directory);
 
         foreach (['queue-health.log', 'queue-health-alert.flag', 'heartbeat', 'alert-flag.json'] as $file) {
@@ -63,6 +62,21 @@ class StoragePathTest extends TestCase
         $this->assertEquals(3, $state->alertCount);
         $this->assertFileExists($this->directory.'/alert-flag.json');
         $this->assertFileDoesNotExist(storage_path('logs/queue-health-alert.flag'));
+    }
+
+    public function test_reports_when_a_pre_14_file_cannot_be_adopted(): void
+    {
+        File::ensureDirectoryExists($this->directory);
+        file_put_contents($this->directory.'/queue-health.log', '2024-01-15T10:00:00+00:00');
+        chmod($this->directory, 0500);
+
+        if (is_writable($this->directory)) {
+            $this->markTestSkipped('This user writes regardless of directory permissions.');
+        }
+
+        $this->expectsReport(QueueHealthException::class);
+
+        $this->assertNull((new Heartbeat)->lastSeenAt());
     }
 
     public function test_keeps_the_current_file_when_a_pre_14_one_is_also_present(): void
@@ -108,12 +122,7 @@ class StoragePathTest extends TestCase
         File::ensureDirectoryExists($this->directory);
         file_put_contents($this->directory.'/heartbeat', Carbon::now()->subMinutes(15)->toIso8601String());
 
-        $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) {
-            $handler = Mockery::mock(Handler::class.'[report]', [$app]);
-            $handler->shouldReceive('report')->with(Mockery::type(QueueHealthException::class))->once();
-
-            return $handler;
-        });
+        $this->expectsReport(QueueHealthException::class);
 
         Mail::shouldReceive('raw')->once();
 

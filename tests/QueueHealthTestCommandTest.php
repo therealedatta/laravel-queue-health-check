@@ -2,9 +2,7 @@
 
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
-use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Support\Facades\Queue;
-use Mockery;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthTestJob;
 
@@ -79,15 +77,5 @@ class QueueHealthTestCommandTest extends TestCase
             ->assertFailed();
 
         Queue::assertNothingPushed();
-    }
-
-    private function expectsReport(string $exceptionClass): void
-    {
-        $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClass) {
-            $handler = Mockery::mock(Handler::class.'[report]', [$app]);
-            $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
-
-            return $handler;
-        });
     }
 }
