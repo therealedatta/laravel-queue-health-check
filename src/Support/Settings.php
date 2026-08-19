@@ -16,9 +16,12 @@ class Settings
         return array_values(array_filter(array_map('trim', $emails)));
     }
 
+    /**
+     * Clamped to what a "*\/N * * * *" cron expression can actually express.
+     */
     public static function checkIntervalMinutes(): int
     {
-        return (int) config('queue-health.check_interval_minutes');
+        return min(max((int) config('queue-health.check_interval_minutes'), 1), 59);
     }
 
     public static function connection(): ?string

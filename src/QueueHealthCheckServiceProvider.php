@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthCheckCommand;
 use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthTestCommand;
+use TheRealEdatta\QueueHealthCheck\Support\Settings;
 
 class QueueHealthCheckServiceProvider extends ServiceProvider
 {
@@ -30,12 +31,8 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
         ]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
-            $interval = config('queue-health.check_interval_minutes');
-
-            if ($interval) {
-                $schedule->command('queue-health:check')
-                    ->cron("*/{$interval} * * * *");
-            }
+            $schedule->command('queue-health:check')
+                ->cron('*/'.Settings::checkIntervalMinutes().' * * * *');
         });
     }
 }
