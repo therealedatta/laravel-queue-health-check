@@ -6,6 +6,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | State Directory
+    |--------------------------------------------------------------------------
+    |
+    | Where the heartbeat and the alert flag are kept. Defaults to
+    | storage/logs. Move it out if anything on your servers prunes that
+    | directory: losing the heartbeat reads as a queue that never started.
+    |
+    */
+    'storage_path' => env('QUEUE_HEALTH_STORAGE_PATH'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Monitored Connection And Queue
     |--------------------------------------------------------------------------
     |

@@ -6,25 +6,11 @@ use Carbon\Carbon;
 use TheRealEdatta\QueueHealthCheck\Enums\HealthIssue;
 use Throwable;
 
-class AlertFlag
+class AlertFlag extends StateFile
 {
-    public function path(): string
-    {
-        return storage_path('logs/queue-health-alert.flag');
-    }
-
-    public function exists(): bool
-    {
-        return file_exists($this->path());
-    }
-
     public function read(): ?AlertState
     {
-        if (! $this->exists()) {
-            return null;
-        }
-
-        $flag = json_decode((string) file_get_contents($this->path()), true);
+        $flag = json_decode($this->contents(), true);
 
         if (! is_array($flag)) {
             return null;
@@ -48,19 +34,17 @@ class AlertFlag
 
     public function write(AlertState $state): void
     {
-        file_put_contents($this->path(), json_encode([
+        $this->put((string) json_encode([
             'issue' => $state->issue->value,
             'detected_at' => $state->detectedAt->toIso8601String(),
             'alerted_at' => $state->alertedAt?->toIso8601String(),
             'alert_count' => $state->alertCount,
-        ]), LOCK_EX);
+        ]));
     }
 
-    public function delete(): void
+    protected function filename(): string
     {
-        if ($this->exists()) {
-            unlink($this->path());
-        }
+        return 'queue-health-alert.flag';
     }
 
     private function parse(?string $timestamp): ?Carbon

@@ -5,25 +5,16 @@ namespace TheRealEdatta\QueueHealthCheck\Support;
 use Carbon\Carbon;
 use Throwable;
 
-class Heartbeat
+class Heartbeat extends StateFile
 {
-    public function path(): string
-    {
-        return storage_path('logs/queue-health.log');
-    }
-
     public function write(): void
     {
-        file_put_contents($this->path(), now()->toIso8601String(), LOCK_EX);
+        $this->put(now()->toIso8601String());
     }
 
     public function lastSeenAt(): ?Carbon
     {
-        if (! file_exists($this->path())) {
-            return null;
-        }
-
-        $timestamp = trim((string) file_get_contents($this->path()));
+        $timestamp = $this->contents();
 
         if ($timestamp === '') {
             return null;
@@ -34,5 +25,10 @@ class Heartbeat
         } catch (Throwable) {
             return null;
         }
+    }
+
+    protected function filename(): string
+    {
+        return 'queue-health.log';
     }
 }

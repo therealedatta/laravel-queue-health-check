@@ -24,6 +24,15 @@ class Settings
         return min(max((int) config('queue-health.check_interval_minutes'), 1), 59);
     }
 
+    /**
+     * Resolved on every call so it follows a relocated storage path and is never
+     * baked into a cached config file.
+     */
+    public static function storagePath(): string
+    {
+        return static::nonEmptyString(config('queue-health.storage_path')) ?? storage_path('logs');
+    }
+
     public static function connection(): ?string
     {
         return static::nonEmptyString(config('queue-health.connection'));
