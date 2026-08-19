@@ -51,7 +51,7 @@ class QueueHealthCheckCommandTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_does_not_alert_when_no_heartbeat_file(): void
+    public function test_does_not_alert_on_the_first_run_without_a_heartbeat(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');
         config()->set('queue-health.check_interval_minutes', 5);
@@ -60,6 +60,74 @@ class QueueHealthCheckCommandTest extends TestCase
         Mail::shouldReceive('raw')->never();
 
         $this->artisan('queue-health:check')->assertSuccessful();
+
+        $flag = json_decode(file_get_contents($this->flagPath), true);
+        $this->assertEquals('no_heartbeat', $flag['issue']);
+        $this->assertEquals(0, $flag['alert_count']);
+    }
+
+    public function test_alerts_when_no_heartbeat_arrives_within_the_grace_period(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'no_heartbeat',
+            'detected_at' => Carbon::now()->subMinutes(15)->toIso8601String(),
+            'alerted_at' => null,
+            'alert_count' => 0,
+        ]));
+
+        $this->expectsReport(QueueHealthException::class);
+
+        Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
+            $this->assertStringContainsString('has not written any heartbeat in 15 minutes', $text);
+
+            $message = Mockery::mock(Message::class);
+            $message->shouldReceive('to')->andReturnSelf();
+            $message->shouldReceive('subject')->with(Mockery::on(fn ($s) => str_contains($s, 'ALERT: Queue worker is not running')))->andReturnSelf();
+            $callback($message);
+
+            return true;
+        });
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        $flag = json_decode(file_get_contents($this->flagPath), true);
+        $this->assertEquals(1, $flag['alert_count']);
+    }
+
+    public function test_confirms_the_queue_when_the_first_heartbeat_arrives(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(1)->toIso8601String());
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'no_heartbeat',
+            'detected_at' => Carbon::now()->subMinutes(5)->toIso8601String(),
+            'alerted_at' => null,
+            'alert_count' => 0,
+        ]));
+
+        Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
+            $this->assertStringContainsString('monitoring is now active', $text);
+
+            $message = Mockery::mock(Message::class);
+            $message->shouldReceive('to')->andReturnSelf();
+            $message->shouldReceive('subject')->with(Mockery::on(fn ($s) => str_contains($s, 'OK: Queue worker is running')))->andReturnSelf();
+            $callback($message);
+
+            return true;
+        });
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        $this->assertFileDoesNotExist($this->flagPath);
     }
 
     public function test_does_not_alert_when_heartbeat_is_recent(): void

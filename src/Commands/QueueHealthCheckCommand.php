@@ -4,6 +4,7 @@ namespace TheRealEdatta\QueueHealthCheck\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
+use TheRealEdatta\QueueHealthCheck\Enums\HealthIssue;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
 use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
@@ -41,31 +42,44 @@ class QueueHealthCheckCommand extends Command
         $lastHeartbeat = $this->heartbeat->lastSeenAt();
 
         if ($lastHeartbeat === null) {
+            $this->handleIssue(HealthIssue::NoHeartbeat);
+
             return;
         }
 
-        $thresholdSeconds = (Settings::checkIntervalMinutes() * 2 * 60) - 1;
         $secondsSince = $lastHeartbeat->diffInSeconds(now());
 
-        if ($secondsSince >= $thresholdSeconds) {
-            $this->handleQueueDown((int) floor($secondsSince / 60));
+        if ($secondsSince >= $this->thresholdSeconds()) {
+            $this->handleIssue(HealthIssue::Down, (int) floor($secondsSince / 60));
 
             return;
         }
 
-        // queue is healthy - if flag exists, send recovery alert and remove flag.
-        if ($this->flag->exists()) {
-            $this->sendRecoveryAlert();
-            $this->flag->delete();
-        }
+        $this->handleRecovery();
     }
 
-    private function handleQueueDown(int $minutesSince): void
+    private function handleIssue(HealthIssue $issue, ?int $minutesSince = null): void
     {
         $state = $this->flag->read();
 
-        if ($state === null) {
-            $this->raiseAlert($minutesSince, 1);
+        if ($state === null || $state->issue !== $issue) {
+            $state = new AlertState($issue, now(), null, 0);
+
+            if ($issue->needsGracePeriod()) {
+                $this->flag->write($state);
+
+                return;
+            }
+
+            $this->raiseAlert($state, $minutesSince);
+
+            return;
+        }
+
+        if ($state->alertCount === 0) {
+            if ($state->detectedAt->diffInSeconds(now()) >= $this->thresholdSeconds()) {
+                $this->raiseAlert($state, $minutesSince);
+            }
 
             return;
         }
@@ -80,19 +94,39 @@ class QueueHealthCheckCommand extends Command
         $thresholdSecondsForRepeat = ($nextAlertInMinutes * 60) - 30;
 
         if ($state->alertedAt->diffInSeconds(now()) >= $thresholdSecondsForRepeat) {
-            $this->raiseAlert($minutesSince, $state->alertCount + 1);
+            $this->raiseAlert($state, $minutesSince);
         }
     }
 
-    private function raiseAlert(int $minutesSince, int $alertCount): void
+    private function handleRecovery(): void
     {
+        $state = $this->flag->read();
+
+        $this->flag->delete();
+
+        if ($state === null) {
+            return;
+        }
+
+        $this->sendRecoveryMail($state->issue);
+    }
+
+    private function raiseAlert(AlertState $state, ?int $minutesSince): void
+    {
+        $minutes = $minutesSince ?? (int) floor($state->detectedAt->diffInSeconds(now()) / 60);
+
         report(new QueueHealthException(
-            "Queue worker has been unresponsive for {$minutesSince} minutes on ".$this->hostname()
+            $this->alertMessage($state->issue, $minutes).' on '.$this->hostname()
         ));
 
-        $this->flag->write(new AlertState(now(), $alertCount));
+        $this->flag->write(new AlertState(
+            $state->issue,
+            $state->detectedAt,
+            now(),
+            $state->alertCount + 1,
+        ));
 
-        $this->sendAlert($minutesSince);
+        $this->sendAlertMail($state->issue, $minutes);
     }
 
     private function getNextAlertInterval(string $interval, int $alertCount): int
@@ -107,22 +141,39 @@ class QueueHealthCheckCommand extends Command
         return (int) $interval;
     }
 
-    private function sendAlert(int $minutesSince): void
+    private function thresholdSeconds(): int
     {
-        $this->sendMail(
-            'ALERT: Queue worker unresponsive',
-            "⚠️ Queue worker has been unresponsive for {$minutesSince} minutes.\n\n"
-                .'Last heartbeat: '.$this->heartbeat->lastSeenAt()?->toIso8601String()
-                ."\nServer: ".$this->hostname()
-        );
+        return (Settings::checkIntervalMinutes() * 2 * 60) - 1;
     }
 
-    private function sendRecoveryAlert(): void
+    private function alertMessage(HealthIssue $issue, int $minutes): string
     {
-        $this->sendMail(
-            'RECOVERED: Queue worker is back',
-            "✅ Queue worker has recovered and is working normally.\n\nServer: ".$this->hostname()
-        );
+        return match ($issue) {
+            HealthIssue::NoHeartbeat => "Queue worker has not written any heartbeat in {$minutes} minutes",
+            HealthIssue::Down => "Queue worker has been unresponsive for {$minutes} minutes",
+        };
+    }
+
+    private function sendAlertMail(HealthIssue $issue, int $minutes): void
+    {
+        $subject = match ($issue) {
+            HealthIssue::NoHeartbeat => 'ALERT: Queue worker is not running',
+            HealthIssue::Down => 'ALERT: Queue worker unresponsive',
+        };
+
+        $this->sendMail($subject, '⚠️ '.$this->alertMessage($issue, $minutes).".\n\n"
+            .'Last heartbeat: '.($this->heartbeat->lastSeenAt()?->toIso8601String() ?? 'never')
+            ."\nServer: ".$this->hostname());
+    }
+
+    private function sendRecoveryMail(HealthIssue $issue): void
+    {
+        [$subject, $status] = match ($issue) {
+            HealthIssue::NoHeartbeat => ['OK: Queue worker is running', '✅ Queue worker is running and health monitoring is now active.'],
+            HealthIssue::Down => ['RECOVERED: Queue worker is back', '✅ Queue worker has recovered and is working normally.'],
+        };
+
+        $this->sendMail($subject, $status."\n\nServer: ".$this->hostname());
     }
 
     private function sendMail(string $subject, string $body): void
