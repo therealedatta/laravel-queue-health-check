@@ -2,6 +2,7 @@
 
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
+use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 
 class ScheduleTest extends TestCase
@@ -20,11 +21,27 @@ class ScheduleTest extends TestCase
         $this->assertEquals('*/59 * * * *', $this->checkExpression());
     }
 
+    public function test_never_overlaps_and_never_blocks_the_scheduler(): void
+    {
+        config()->set('queue-health.check_interval_minutes', 5);
+
+        $event = $this->checkEvent();
+
+        $this->assertTrue($event->withoutOverlapping);
+        $this->assertEquals(10, $event->expiresAt);
+        $this->assertTrue($event->runInBackground);
+    }
+
     private function checkExpression(): ?string
+    {
+        return $this->checkEvent()?->expression;
+    }
+
+    private function checkEvent(): ?Event
     {
         foreach ($this->app->make(Schedule::class)->events() as $event) {
             if (str_contains((string) $event->command, 'queue-health:check')) {
-                return $event->expression;
+                return $event;
             }
         }
 

@@ -31,8 +31,15 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
         ]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            $interval = Settings::checkIntervalMinutes();
+
             $schedule->command('queue-health:check')
-                ->cron('*/'.Settings::checkIntervalMinutes().' * * * *');
+                ->cron('*/'.$interval.' * * * *')
+                // the alert mail is sent synchronously, so a hung mailer would pile up
+                // runs. The lock expiry is explicit because the 24h default would keep
+                // the check silent for a day if a run were killed before releasing it.
+                ->withoutOverlapping($interval * 2)
+                ->runInBackground();
         });
     }
 }
