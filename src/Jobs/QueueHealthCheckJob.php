@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
 
 class QueueHealthCheckJob implements ShouldQueue
 {
@@ -16,8 +17,8 @@ class QueueHealthCheckJob implements ShouldQueue
 
     public int $backoff = 5;
 
-    public function handle(): void
+    public function handle(Heartbeat $heartbeat): void
     {
-        file_put_contents(storage_path('logs/queue-health.log'), now()->toIso8601String());
+        $heartbeat->write();
     }
 }

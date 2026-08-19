@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
+use TheRealEdatta\QueueHealthCheck\Support\Settings;
 
 class QueueHealthTestJob implements ShouldQueue
 {
@@ -49,7 +50,7 @@ class QueueHealthTestJob implements ShouldQueue
             ."Delay: {$delaySeconds}s\n\n"
             .'Server: '.gethostname();
 
-        $recipients = array_map('trim', explode(',', $this->email));
+        $recipients = Settings::parseEmails($this->email);
 
         Mail::raw(
             $body,

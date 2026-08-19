@@ -2,11 +2,14 @@
 
 namespace TheRealEdatta\QueueHealthCheck\Commands;
 
-use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
+use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
+use TheRealEdatta\QueueHealthCheck\Support\AlertState;
+use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
+use TheRealEdatta\QueueHealthCheck\Support\Settings;
 
 class QueueHealthCheckCommand extends Command
 {
@@ -14,9 +17,16 @@ class QueueHealthCheckCommand extends Command
 
     protected $description = 'Check queue health via heartbeat and alert if unresponsive';
 
+    public function __construct(
+        private Heartbeat $heartbeat,
+        private AlertFlag $flag,
+    ) {
+        parent::__construct();
+    }
+
     public function handle(): void
     {
-        if (! config('queue-health.alert_email')) {
+        if (Settings::recipients() === []) {
             return;
         }
 
@@ -27,71 +37,61 @@ class QueueHealthCheckCommand extends Command
 
     private function checkLastHeartbeat(): void
     {
-        $logPath = storage_path('logs/queue-health.log');
-        $flagPath = storage_path('logs/queue-health-alert.flag');
+        $lastHeartbeat = $this->heartbeat->lastSeenAt();
 
-        if (! file_exists($logPath)) {
+        if ($lastHeartbeat === null) {
             return;
         }
 
-        $lastHeartbeat = Carbon::parse(file_get_contents($logPath));
-        $thresholdSeconds = (config('queue-health.check_interval_minutes') * 2 * 60) - 1;
+        $thresholdSeconds = (Settings::checkIntervalMinutes() * 2 * 60) - 1;
         $secondsSince = $lastHeartbeat->diffInSeconds(now());
-        $minutesSince = (int) floor($secondsSince / 60);
 
-        $queueIsDown = $secondsSince >= $thresholdSeconds;
-
-        if ($queueIsDown) {
-            $this->handleQueueDown($flagPath, $minutesSince);
+        if ($secondsSince >= $thresholdSeconds) {
+            $this->handleQueueDown((int) floor($secondsSince / 60));
 
             return;
         }
 
         // queue is healthy - if flag exists, send recovery alert and remove flag.
-        if (file_exists($flagPath)) {
+        if ($this->flag->exists()) {
             $this->sendRecoveryAlert();
-            unlink($flagPath);
+            $this->flag->delete();
         }
     }
 
-    private function handleQueueDown(string $flagPath, int $minutesSince): void
+    private function handleQueueDown(int $minutesSince): void
     {
-        if (! file_exists($flagPath)) {
-            $this->sendAlert($minutesSince);
-            report(new QueueHealthException(
-                "Queue worker has been unresponsive for {$minutesSince} minutes on ".gethostname()
-            ));
-            file_put_contents($flagPath, json_encode([
-                'alerted_at' => now()->toIso8601String(),
-                'alert_count' => 1,
-            ]));
+        $state = $this->flag->read();
+
+        if ($state === null) {
+            $this->raiseAlert($minutesSince, 1);
 
             return;
         }
 
-        $repeatInterval = config('queue-health.alert_repeat_interval');
+        $repeatInterval = Settings::alertRepeatInterval();
 
         if ($repeatInterval === null) {
             return;
         }
 
-        $flag = json_decode(file_get_contents($flagPath), true);
-        $alertCount = $flag['alert_count'] ?? 1;
-        $lastAlertedAt = Carbon::parse($flag['alerted_at']);
-        $nextAlertInMinutes = $this->getNextAlertInterval($repeatInterval, $alertCount);
-        $secondsSinceLastAlert = $lastAlertedAt->diffInSeconds(now());
+        $nextAlertInMinutes = $this->getNextAlertInterval($repeatInterval, $state->alertCount);
         $thresholdSecondsForRepeat = ($nextAlertInMinutes * 60) - 30;
 
-        if ($secondsSinceLastAlert >= $thresholdSecondsForRepeat) {
-            $this->sendAlert($minutesSince);
-            report(new QueueHealthException(
-                "Queue worker has been unresponsive for {$minutesSince} minutes on ".gethostname()
-            ));
-            file_put_contents($flagPath, json_encode([
-                'alerted_at' => now()->toIso8601String(),
-                'alert_count' => $alertCount + 1,
-            ]));
+        if ($state->alertedAt->diffInSeconds(now()) >= $thresholdSecondsForRepeat) {
+            $this->raiseAlert($minutesSince, $state->alertCount + 1);
         }
+    }
+
+    private function raiseAlert(int $minutesSince, int $alertCount): void
+    {
+        $this->sendAlert($minutesSince);
+
+        report(new QueueHealthException(
+            "Queue worker has been unresponsive for {$minutesSince} minutes on ".$this->hostname()
+        ));
+
+        $this->flag->write(new AlertState(now(), $alertCount));
     }
 
     private function getNextAlertInterval(string $interval, int $alertCount): int
@@ -108,29 +108,34 @@ class QueueHealthCheckCommand extends Command
 
     private function sendAlert(int $minutesSince): void
     {
-        $alertEmails = array_map('trim', explode(',', config('queue-health.alert_email')));
-
-        Mail::raw(
-            "⚠️ Queue worker has been unresponsive for {$minutesSince} minutes.\n\nLast heartbeat: "
-                .file_get_contents(storage_path('logs/queue-health.log'))
-                ."\nServer: ".gethostname(),
-            function ($message) use ($alertEmails) {
-                $message->to($alertEmails)
-                    ->subject('['.config('app.name').'] ALERT: Queue worker unresponsive');
-            }
+        $this->sendMail(
+            'ALERT: Queue worker unresponsive',
+            "⚠️ Queue worker has been unresponsive for {$minutesSince} minutes.\n\n"
+                .'Last heartbeat: '.$this->heartbeat->lastSeenAt()?->toIso8601String()
+                ."\nServer: ".$this->hostname()
         );
     }
 
     private function sendRecoveryAlert(): void
     {
-        $alertEmails = array_map('trim', explode(',', config('queue-health.alert_email')));
-
-        Mail::raw(
-            "✅ Queue worker has recovered and is working normally.\n\nServer: ".gethostname(),
-            function ($message) use ($alertEmails) {
-                $message->to($alertEmails)
-                    ->subject('['.config('app.name').'] RECOVERED: Queue worker is back');
-            }
+        $this->sendMail(
+            'RECOVERED: Queue worker is back',
+            "✅ Queue worker has recovered and is working normally.\n\nServer: ".$this->hostname()
         );
+    }
+
+    private function sendMail(string $subject, string $body): void
+    {
+        $recipients = Settings::recipients();
+
+        Mail::raw($body, function ($message) use ($recipients, $subject) {
+            $message->to($recipients)
+                ->subject('['.config('app.name').'] '.$subject);
+        });
+    }
+
+    private function hostname(): string
+    {
+        return gethostname() ?: 'unknown';
     }
 }

@@ -3,6 +3,7 @@
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
 use Carbon\Carbon;
+use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -99,6 +100,34 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
 
         $this->assertFileExists($this->flagPath);
+        $flag = json_decode(file_get_contents($this->flagPath), true);
+        $this->assertEquals(1, $flag['alert_count']);
+    }
+
+    public function test_treats_an_unreadable_flag_as_a_new_incident(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        config()->set('queue-health.alert_repeat_interval', null);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+        file_put_contents($this->flagPath, 'truncated');
+
+        $this->expectsReport(QueueHealthException::class);
+
+        Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
+            $message = Mockery::mock(Message::class);
+            $message->shouldReceive('to')->andReturnSelf();
+            $message->shouldReceive('subject')->andReturnSelf();
+            $callback($message);
+
+            return true;
+        });
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
         $flag = json_decode(file_get_contents($this->flagPath), true);
         $this->assertEquals(1, $flag['alert_count']);
     }
@@ -293,7 +322,7 @@ class QueueHealthCheckCommandTest extends TestCase
     private function expectsReport(string $exceptionClass): void
     {
         $this->app->bind('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClass) {
-            $handler = Mockery::mock(\Illuminate\Foundation\Exceptions\Handler::class.'[report]', [$app]);
+            $handler = Mockery::mock(Handler::class.'[report]', [$app]);
             $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
 
             return $handler;

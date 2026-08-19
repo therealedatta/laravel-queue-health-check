@@ -4,6 +4,7 @@ namespace TheRealEdatta\QueueHealthCheck\Tests;
 
 use Carbon\Carbon;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
+use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
 
 class QueueHealthCheckJobTest extends TestCase
 {
@@ -20,7 +21,7 @@ class QueueHealthCheckJobTest extends TestCase
     {
         Carbon::setTestNow('2024-01-15 10:00:00');
 
-        (new QueueHealthCheckJob)->handle();
+        (new QueueHealthCheckJob)->handle(new Heartbeat);
 
         $logPath = storage_path('logs/queue-health.log');
         $this->assertFileExists($logPath);
