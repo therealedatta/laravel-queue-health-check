@@ -21,6 +21,13 @@ class ScheduleTest extends TestCase
         $this->assertEquals('*/59 * * * *', $this->checkExpression());
     }
 
+    public function test_does_not_schedule_anything_when_disabled(): void
+    {
+        config()->set('queue-health.enabled', false);
+
+        $this->assertNull($this->checkEvent());
+    }
+
     public function test_never_overlaps_and_never_blocks_the_scheduler(): void
     {
         config()->set('queue-health.check_interval_minutes', 5);

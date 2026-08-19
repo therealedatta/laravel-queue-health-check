@@ -30,7 +30,7 @@ class QueueHealthCheckCommand extends Command
 
     public function handle(): int
     {
-        if (Settings::recipients() === []) {
+        if (! Settings::enabled() || Settings::recipients() === []) {
             return self::SUCCESS;
         }
 

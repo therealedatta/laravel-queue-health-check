@@ -45,6 +45,24 @@ class QueueHealthCheckCommandTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_does_nothing_when_disabled(): void
+    {
+        config()->set('queue-health.enabled', false);
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        Queue::assertNothingPushed();
+        $this->assertFileDoesNotExist($this->flagPath);
+    }
+
     public function test_does_nothing_without_config(): void
     {
         config()->set('queue-health.alert_email', null);

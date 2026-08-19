@@ -90,6 +90,7 @@ QUEUE_HEALTH_CHECK_INTERVAL=5
 
 | Variable | Description | Default |
 |---|---|---|
+| `QUEUE_HEALTH_ENABLED` | Master switch for the scheduled monitoring | `true` |
 | `QUEUE_HEALTH_ALERT_EMAIL` | Comma-separated list of email recipients | `null` (disabled) |
 | `QUEUE_HEALTH_CHECK_INTERVAL` | Minutes between checks, clamped to 1–59 | `5` |
 | `QUEUE_HEALTH_ALERT_REPEAT_INTERVAL` | Alert repeat interval in minutes (see below) | `null` (one alert per incident) |
@@ -100,6 +101,16 @@ QUEUE_HEALTH_CHECK_INTERVAL=5
 If `QUEUE_HEALTH_ALERT_EMAIL` is missing or empty, the package does nothing.
 
 Set `QUEUE_HEALTH_CONNECTION` and `QUEUE_HEALTH_QUEUE` to monitor one specific worker — both the heartbeat and `queue-health:test` are dispatched there.
+
+### Turning It Off
+
+```env
+QUEUE_HEALTH_ENABLED=false
+```
+
+The scheduled task is then never registered, so it does not show up in `schedule:list` and never runs — useful on local or staging environments where a worker is not always up. `queue-health:check` also becomes a no-op if you call it yourself.
+
+The two manual commands keep working on purpose: `queue-health:status` still reports the state and says `monitoring is disabled` (exiting `0`, since nothing is wrong when you turned it off), and `queue-health:test` still probes the queue. Leaving `QUEUE_HEALTH_ALERT_EMAIL` empty disables the alerting too, but the task is still registered and runs; use this switch to remove it altogether.
 
 ### Alert Repeat Interval
 

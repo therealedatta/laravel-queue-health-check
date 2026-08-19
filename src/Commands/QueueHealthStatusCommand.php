@@ -28,12 +28,13 @@ class QueueHealthStatusCommand extends Command
         $recipients = Settings::recipients();
         $lastSeenAt = $this->heartbeat->lastSeenAt();
         $state = $this->flag->read();
-        $issue = $this->currentIssue($lastSeenAt);
-        $unhealthy = $this->isUnhealthy($issue, $state);
+        $disabled = ! Settings::enabled();
+        $issue = $disabled ? null : $this->currentIssue($lastSeenAt);
+        $unhealthy = ! $disabled && $this->isUnhealthy($issue, $state);
         $connection = Settings::connection() ?? config('queue.default');
 
         $this->table(['Item', 'Value'], [
-            ['Status', $this->statusLabel($issue, $unhealthy)],
+            ['Status', $disabled ? 'monitoring is disabled' : $this->statusLabel($issue, $unhealthy)],
             ['Recipients', $recipients === [] ? 'not configured, alerting is disabled' : implode(', ', $recipients)],
             ['Connection', $connection.' ('.(Settings::connectionDriver() ?? 'unknown driver').')'],
             ['Queue', Settings::queue() ?? 'default'],

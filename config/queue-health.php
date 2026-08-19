@@ -1,6 +1,18 @@
 <?php
 
 return [
+    /*
+    |--------------------------------------------------------------------------
+    | Monitoring Switch
+    |--------------------------------------------------------------------------
+    |
+    | Set to false and the scheduled check is never registered and never runs.
+    | The manual commands, queue-health:status and queue-health:test, keep
+    | working so you can still inspect and probe the queue by hand.
+    |
+    */
+    'enabled' => env('QUEUE_HEALTH_ENABLED', true),
+
     'alert_email' => env('QUEUE_HEALTH_ALERT_EMAIL'),
     'check_interval_minutes' => env('QUEUE_HEALTH_CHECK_INTERVAL', 5),
 

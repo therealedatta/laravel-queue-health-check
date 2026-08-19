@@ -4,6 +4,15 @@ namespace TheRealEdatta\QueueHealthCheck\Support;
 
 class Settings
 {
+    /**
+     * Only an explicit false switches the package off; anything unrecognised
+     * leaves the monitoring on rather than silently disabling it.
+     */
+    public static function enabled(): bool
+    {
+        return filter_var(config('queue-health.enabled', true), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+    }
+
     public static function recipients(): array
     {
         return static::parseEmails(config('queue-health.alert_email'));

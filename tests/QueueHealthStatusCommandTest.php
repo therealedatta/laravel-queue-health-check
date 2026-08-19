@@ -79,6 +79,21 @@ class QueueHealthStatusCommandTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_reports_that_monitoring_is_disabled_without_failing(): void
+    {
+        config()->set('queue-health.enabled', false);
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+
+        $this->artisan('queue-health:status')
+            ->expectsOutputToContain('monitoring is disabled')
+            ->assertSuccessful();
+    }
+
     public function test_does_not_fail_on_a_fresh_install(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');

@@ -33,6 +33,10 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
         ]);
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
+            if (! Settings::enabled()) {
+                return;
+            }
+
             $interval = Settings::checkIntervalMinutes();
 
             $schedule->command('queue-health:check')
