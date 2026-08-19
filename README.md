@@ -40,20 +40,20 @@ Only the run that actually sends that warning exits with a non-zero status. Once
 
 ### State Files
 
-Both files live in `queue-health.storage_path`, which defaults to `storage/logs`:
+Both files live in `queue-health.storage_path`, which defaults to `storage/app/queue-health`:
 
 | File | Purpose |
 |---|---|
-| `queue-health.log` | ISO 8601 timestamp of the last successful job execution |
-| `queue-health-alert.flag` | JSON incident state (`issue`, `detected_at`, `alerted_at`, `alert_count`). Exists only while the queue is unhealthy. |
+| `heartbeat` | ISO 8601 timestamp of the last successful job execution |
+| `alert-flag.json` | Incident state (`issue`, `detected_at`, `alerted_at`, `alert_count`). Exists only while the queue is unhealthy. |
 
-**Move the directory if anything on your servers prunes logs.** These are state, not logs: a `logrotate` rule or a `find storage/logs -mtime +7 -delete` that removes the heartbeat looks exactly like a queue that never started, and you get a false `no_heartbeat` alert.
+This is state, not logs, and it deliberately lives away from `storage/logs`: a `logrotate` rule or a `find storage/logs -mtime +7 -delete` that removed the heartbeat would look exactly like a queue that never started and trigger a false `no_heartbeat` alert. The filenames carry no `.log` extension for the same reason — a glob such as `storage/**/*.log` must not match them.
 
 ```env
-QUEUE_HEALTH_STORAGE_PATH=/var/www/app/storage/app/queue-health
+QUEUE_HEALTH_STORAGE_PATH=/var/lib/queue-health
 ```
 
-The directory is created on first write, and the path is resolved on every call, so it also follows `useStoragePath()` in tests and is never baked into a cached config file.
+The directory is created on first write, and the path is resolved on every call, so it also follows `useStoragePath()` in tests and is never baked into a cached config file. If your queue worker and your scheduler run as **different users**, pre-create the directory with ownership both can write to: whichever process gets there first creates it as `0755`.
 
 An empty or unparseable heartbeat file counts as *no heartbeat*, never as a healthy queue. An unreadable flag file is treated as a fresh incident.
 
@@ -63,6 +63,21 @@ An empty or unparseable heartbeat file counts as *no heartbeat*, never as a heal
 composer require therealedatta/laravel-queue-health-check
 php artisan vendor:publish --tag=queue-health-config
 ```
+
+### Upgrading From 1.3
+
+The state files moved out of `storage/logs`. Nothing breaks and no false alarm is raised, but the first check after upgrading finds no heartbeat at the new location, so it opens a `no_heartbeat` incident silently and, once the worker writes the first heartbeat, sends a single `OK: Queue worker is running` email. Two details worth knowing:
+
+- If the queue happens to be down while you upgrade, the alert arrives after the grace period (`check_interval_minutes * 2`) and reads `is not running` rather than `unresponsive`.
+- An incident that was open at that moment is forgotten, so no recovery email is sent for it.
+
+The old files are no longer read and can be deleted:
+
+```bash
+rm storage/logs/queue-health.log storage/logs/queue-health-alert.flag
+```
+
+To keep the state where it was, set `QUEUE_HEALTH_STORAGE_PATH` to the absolute path of your log directory.
 
 ## Configuration
 
@@ -80,7 +95,7 @@ QUEUE_HEALTH_CHECK_INTERVAL=5
 | `QUEUE_HEALTH_ALERT_REPEAT_INTERVAL` | Alert repeat interval in minutes (see below) | `null` (one alert per incident) |
 | `QUEUE_HEALTH_CONNECTION` | Queue connection to monitor | app default |
 | `QUEUE_HEALTH_QUEUE` | Queue name to monitor | connection default |
-| `QUEUE_HEALTH_STORAGE_PATH` | Directory for the heartbeat and the alert flag | `storage/logs` |
+| `QUEUE_HEALTH_STORAGE_PATH` | Directory for the heartbeat and the alert flag | `storage/app/queue-health` |
 
 If `QUEUE_HEALTH_ALERT_EMAIL` is missing or empty, the package does nothing.
 
@@ -120,7 +135,7 @@ php artisan queue-health:status
 | Recipients            | admin@example.com                                        |
 | Connection            | redis (redis)                                            |
 | Queue                 | default                                                  |
-| State directory       | /var/www/app/storage/logs                                |
+| State directory       | /var/www/app/storage/app/queue-health                    |
 | Last heartbeat        | 2024-01-15T09:45:00+00:00 (15 minutes ago)               |
 | Considered down after | 10 minutes without a heartbeat                           |
 | Open incident         | down since 2024-01-15T09:48:00+00:00, 2 alert(s) sent    |

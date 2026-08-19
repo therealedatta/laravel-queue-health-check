@@ -32,19 +32,19 @@ class StoragePathTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_defaults_to_the_log_directory(): void
+    public function test_defaults_outside_the_log_directory(): void
     {
         config()->set('queue-health.storage_path', null);
 
-        $this->assertEquals(storage_path('logs/queue-health.log'), (new Heartbeat)->path());
-        $this->assertEquals(storage_path('logs/queue-health-alert.flag'), (new AlertFlag)->path());
+        $this->assertEquals(storage_path('app/queue-health/heartbeat'), (new Heartbeat)->path());
+        $this->assertEquals(storage_path('app/queue-health/alert-flag.json'), (new AlertFlag)->path());
     }
 
     public function test_writes_the_heartbeat_in_the_configured_directory(): void
     {
         (new Heartbeat)->write();
 
-        $this->assertFileExists($this->directory.'/queue-health.log');
+        $this->assertFileExists($this->directory.'/heartbeat');
     }
 
     public function test_writes_the_alert_flag_in_the_configured_directory(): void
@@ -53,7 +53,7 @@ class StoragePathTest extends TestCase
 
         (new AlertFlag)->write(new AlertState(HealthIssue::Down, Carbon::now(), Carbon::now(), 1));
 
-        $this->assertFileExists($this->directory.'/queue-health-alert.flag');
+        $this->assertFileExists($this->directory.'/alert-flag.json');
     }
 
     public function test_the_check_command_keeps_all_state_in_the_configured_directory(): void
@@ -64,7 +64,7 @@ class StoragePathTest extends TestCase
 
         Carbon::setTestNow('2024-01-15 10:00:00');
         File::ensureDirectoryExists($this->directory);
-        file_put_contents($this->directory.'/queue-health.log', Carbon::now()->subMinutes(15)->toIso8601String());
+        file_put_contents($this->directory.'/heartbeat', Carbon::now()->subMinutes(15)->toIso8601String());
 
         $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) {
             $handler = Mockery::mock(Handler::class.'[report]', [$app]);
@@ -77,7 +77,7 @@ class StoragePathTest extends TestCase
 
         $this->artisan('queue-health:check')->assertSuccessful();
 
-        $this->assertFileExists($this->directory.'/queue-health-alert.flag');
-        $this->assertFileDoesNotExist(storage_path('logs/queue-health-alert.flag'));
+        $this->assertFileExists($this->directory.'/alert-flag.json');
+        $this->assertFileDoesNotExist(storage_path('app/queue-health/alert-flag.json'));
     }
 }

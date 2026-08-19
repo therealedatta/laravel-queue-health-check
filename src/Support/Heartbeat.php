@@ -29,6 +29,6 @@ class Heartbeat extends StateFile
 
     protected function filename(): string
     {
-        return 'queue-health.log';
+        return 'heartbeat';
     }
 }

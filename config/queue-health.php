@@ -10,8 +10,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | Where the heartbeat and the alert flag are kept. Defaults to
-    | storage/logs. Move it out if anything on your servers prunes that
-    | directory: losing the heartbeat reads as a queue that never started.
+    | storage/app/queue-health, deliberately away from storage/logs: anything
+    | that prunes logs would take the heartbeat with it, and a missing
+    | heartbeat reads as a queue that never started.
     |
     */
     'storage_path' => env('QUEUE_HEALTH_STORAGE_PATH'),

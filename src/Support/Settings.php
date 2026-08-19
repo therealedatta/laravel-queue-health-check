@@ -30,7 +30,7 @@ class Settings
      */
     public static function storagePath(): string
     {
-        return static::nonEmptyString(config('queue-health.storage_path')) ?? storage_path('logs');
+        return static::nonEmptyString(config('queue-health.storage_path')) ?? storage_path('app/queue-health');
     }
 
     public static function connection(): ?string

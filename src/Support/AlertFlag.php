@@ -44,7 +44,7 @@ class AlertFlag extends StateFile
 
     protected function filename(): string
     {
-        return 'queue-health-alert.flag';
+        return 'alert-flag.json';
     }
 
     private function parse(?string $timestamp): ?Carbon

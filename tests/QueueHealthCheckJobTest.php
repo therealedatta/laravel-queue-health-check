@@ -10,10 +10,8 @@ class QueueHealthCheckJobTest extends TestCase
 {
     protected function tearDown(): void
     {
-        $logPath = storage_path('logs/queue-health.log');
-        if (file_exists($logPath)) {
-            unlink($logPath);
-        }
+        (new Heartbeat)->delete();
+        Carbon::setTestNow();
         parent::tearDown();
     }
 
@@ -21,10 +19,9 @@ class QueueHealthCheckJobTest extends TestCase
     {
         Carbon::setTestNow('2024-01-15 10:00:00');
 
-        (new QueueHealthCheckJob)->handle(new Heartbeat);
+        (new QueueHealthCheckJob)->handle($heartbeat = new Heartbeat);
 
-        $logPath = storage_path('logs/queue-health.log');
-        $this->assertFileExists($logPath);
-        $this->assertStringContainsString('2024-01-15', file_get_contents($logPath));
+        $this->assertFileExists($heartbeat->path());
+        $this->assertStringContainsString('2024-01-15', file_get_contents($heartbeat->path()));
     }
 }

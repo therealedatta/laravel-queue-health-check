@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -15,6 +16,8 @@ use TheRealEdatta\QueueHealthCheck\Events\QueueHealthy;
 use TheRealEdatta\QueueHealthCheck\Events\QueueUnhealthy;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
+use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
+use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
 
 class QueueHealthCheckCommandTest extends TestCase
 {
@@ -25,12 +28,10 @@ class QueueHealthCheckCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->logPath = storage_path('logs/queue-health.log');
-        $this->flagPath = storage_path('logs/queue-health-alert.flag');
+        $this->logPath = (new Heartbeat)->path();
+        $this->flagPath = (new AlertFlag)->path();
 
-        if (! is_dir(storage_path('logs'))) {
-            mkdir(storage_path('logs'), 0755, true);
-        }
+        File::ensureDirectoryExists(dirname($this->logPath));
     }
 
     protected function tearDown(): void

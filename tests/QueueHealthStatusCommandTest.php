@@ -3,8 +3,11 @@
 namespace TheRealEdatta\QueueHealthCheck\Tests;
 
 use Carbon\Carbon;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
+use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
 
 class QueueHealthStatusCommandTest extends TestCase
 {
@@ -15,12 +18,10 @@ class QueueHealthStatusCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->logPath = storage_path('logs/queue-health.log');
-        $this->flagPath = storage_path('logs/queue-health-alert.flag');
+        $this->logPath = (new Heartbeat)->path();
+        $this->flagPath = (new AlertFlag)->path();
 
-        if (! is_dir(storage_path('logs'))) {
-            mkdir(storage_path('logs'), 0755, true);
-        }
+        File::ensureDirectoryExists(dirname($this->logPath));
     }
 
     protected function tearDown(): void
