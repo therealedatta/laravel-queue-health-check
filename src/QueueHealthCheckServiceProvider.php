@@ -5,6 +5,7 @@ namespace TheRealEdatta\QueueHealthCheck;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\ServiceProvider;
 use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthCheckCommand;
+use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthStatusCommand;
 use TheRealEdatta\QueueHealthCheck\Commands\QueueHealthTestCommand;
 use TheRealEdatta\QueueHealthCheck\Support\Settings;
 
@@ -27,6 +28,7 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
 
         $this->commands([
             QueueHealthCheckCommand::class,
+            QueueHealthStatusCommand::class,
             QueueHealthTestCommand::class,
         ]);
 
