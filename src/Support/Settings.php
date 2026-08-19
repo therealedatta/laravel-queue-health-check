@@ -21,9 +21,19 @@ class Settings
         return (int) config('queue-health.check_interval_minutes');
     }
 
+    public static function connection(): ?string
+    {
+        return static::nonEmptyString(config('queue-health.connection'));
+    }
+
+    public static function queue(): ?string
+    {
+        return static::nonEmptyString(config('queue-health.queue'));
+    }
+
     public static function connectionDriver(): ?string
     {
-        return config('queue.connections.'.config('queue.default').'.driver');
+        return config('queue.connections.'.(static::connection() ?? config('queue.default')).'.driver');
     }
 
     public static function alertRepeatInterval(): ?string
@@ -31,5 +41,14 @@ class Settings
         $interval = config('queue-health.alert_repeat_interval');
 
         return $interval === null ? null : (string) $interval;
+    }
+
+    private static function nonEmptyString(mixed $value): ?string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        return trim($value);
     }
 }

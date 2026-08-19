@@ -5,6 +5,7 @@ namespace TheRealEdatta\QueueHealthCheck\Commands;
 use Illuminate\Console\Command;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthTestJob;
+use TheRealEdatta\QueueHealthCheck\Support\Settings;
 
 class QueueHealthTestCommand extends Command
 {
@@ -25,7 +26,9 @@ class QueueHealthTestCommand extends Command
             return;
         }
 
-        QueueHealthTestJob::dispatch($email);
+        QueueHealthTestJob::dispatch($email)
+            ->onConnection(Settings::connection())
+            ->onQueue(Settings::queue());
 
         $this->info("Test job dispatched to the queue. Check {$email} for the test email.");
     }

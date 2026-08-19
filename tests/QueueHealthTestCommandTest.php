@@ -32,6 +32,20 @@ class QueueHealthTestCommandTest extends TestCase
         });
     }
 
+    public function test_dispatches_the_test_job_on_the_configured_connection_and_queue(): void
+    {
+        config()->set('queue-health.connection', 'redis');
+        config()->set('queue-health.queue', 'monitoring');
+        Queue::fake();
+
+        $this->artisan('queue-health:test', ['email' => 'user@example.com'])
+            ->assertSuccessful();
+
+        Queue::assertPushed(QueueHealthTestJob::class, function ($job) {
+            return $job->connection === 'redis' && $job->queue === 'monitoring';
+        });
+    }
+
     public function test_uses_config_email_when_no_argument(): void
     {
         config()->set('queue-health.alert_email', 'admin@example.com');

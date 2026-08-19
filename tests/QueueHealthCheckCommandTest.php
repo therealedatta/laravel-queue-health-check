@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Symfony\Component\Mailer\Exception\TransportException;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
+use TheRealEdatta\QueueHealthCheck\Jobs\QueueHealthCheckJob;
 
 class QueueHealthCheckCommandTest extends TestCase
 {
@@ -49,6 +50,22 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_sends_the_heartbeat_through_the_configured_connection_and_queue(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.connection', 'redis');
+        config()->set('queue-health.queue', 'monitoring');
+        Queue::fake();
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        Queue::assertPushed(QueueHealthCheckJob::class, function ($job) {
+            return $job->connection === 'redis' && $job->queue === 'monitoring';
+        });
     }
 
     public function test_warns_and_fails_when_the_queue_connection_is_sync(): void

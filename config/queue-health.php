@@ -6,6 +6,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Monitored Connection And Queue
+    |--------------------------------------------------------------------------
+    |
+    | The heartbeat is sent through the application default connection and queue
+    | unless these are set. Set them to monitor a specific worker.
+    |
+    */
+    'connection' => env('QUEUE_HEALTH_CONNECTION'),
+    'queue' => env('QUEUE_HEALTH_QUEUE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Alert Repeat Interval (minutes)
     |--------------------------------------------------------------------------
     |

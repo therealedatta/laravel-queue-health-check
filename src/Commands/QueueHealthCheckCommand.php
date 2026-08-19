@@ -41,7 +41,9 @@ class QueueHealthCheckCommand extends Command
 
         $this->checkLastHeartbeat();
 
-        QueueHealthCheckJob::dispatch();
+        QueueHealthCheckJob::dispatch()
+            ->onConnection(Settings::connection())
+            ->onQueue(Settings::queue());
 
         return self::SUCCESS;
     }
