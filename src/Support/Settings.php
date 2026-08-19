@@ -38,17 +38,17 @@ class Settings
 
     public static function alertRepeatInterval(): ?string
     {
-        $interval = config('queue-health.alert_repeat_interval');
-
-        return $interval === null ? null : (string) $interval;
+        return static::nonEmptyString(config('queue-health.alert_repeat_interval'));
     }
 
     private static function nonEmptyString(mixed $value): ?string
     {
-        if (! is_string($value) || trim($value) === '') {
+        if (! is_scalar($value)) {
             return null;
         }
 
-        return trim($value);
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 }

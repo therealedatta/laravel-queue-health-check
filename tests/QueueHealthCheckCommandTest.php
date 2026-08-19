@@ -320,6 +320,27 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
     }
 
+    public function test_does_not_repeat_alert_when_the_repeat_interval_is_empty(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        config()->set('queue-health.alert_repeat_interval', '');
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+        file_put_contents($this->flagPath, json_encode([
+            'issue' => 'down',
+            'detected_at' => Carbon::now()->subMinutes(10)->toIso8601String(),
+            'alerted_at' => Carbon::now()->subMinutes(10)->toIso8601String(),
+            'alert_count' => 1,
+        ]));
+
+        Mail::shouldReceive('raw')->never();
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+    }
+
     public function test_repeats_alert_when_repeat_interval_elapsed(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');
