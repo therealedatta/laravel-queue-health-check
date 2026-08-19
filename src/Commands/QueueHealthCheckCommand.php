@@ -26,15 +26,24 @@ class QueueHealthCheckCommand extends Command
         parent::__construct();
     }
 
-    public function handle(): void
+    public function handle(): int
     {
         if (Settings::recipients() === []) {
-            return;
+            return self::SUCCESS;
+        }
+
+        if (Settings::connectionDriver() === 'sync') {
+            $this->error('queue-health cannot monitor anything: the queue connection uses the sync driver.');
+            $this->handleIssue(HealthIssue::SyncDriver);
+
+            return self::FAILURE;
         }
 
         $this->checkLastHeartbeat();
 
         QueueHealthCheckJob::dispatch();
+
+        return self::SUCCESS;
     }
 
     private function checkLastHeartbeat(): void
@@ -151,6 +160,7 @@ class QueueHealthCheckCommand extends Command
         return match ($issue) {
             HealthIssue::NoHeartbeat => "Queue worker has not written any heartbeat in {$minutes} minutes",
             HealthIssue::Down => "Queue worker has been unresponsive for {$minutes} minutes",
+            HealthIssue::SyncDriver => 'Queue health cannot be monitored because the queue connection uses the sync driver',
         };
     }
 
@@ -159,11 +169,15 @@ class QueueHealthCheckCommand extends Command
         $subject = match ($issue) {
             HealthIssue::NoHeartbeat => 'ALERT: Queue worker is not running',
             HealthIssue::Down => 'ALERT: Queue worker unresponsive',
+            HealthIssue::SyncDriver => 'WARNING: Queue health is not being monitored',
         };
 
+        $detail = $issue === HealthIssue::SyncDriver
+            ? 'Set QUEUE_CONNECTION to a real queue driver and run a worker.'
+            : 'Last heartbeat: '.($this->heartbeat->lastSeenAt()?->toIso8601String() ?? 'never');
+
         $this->sendMail($subject, '⚠️ '.$this->alertMessage($issue, $minutes).".\n\n"
-            .'Last heartbeat: '.($this->heartbeat->lastSeenAt()?->toIso8601String() ?? 'never')
-            ."\nServer: ".$this->hostname());
+            .$detail."\nServer: ".$this->hostname());
     }
 
     private function sendRecoveryMail(HealthIssue $issue): void
@@ -171,6 +185,7 @@ class QueueHealthCheckCommand extends Command
         [$subject, $status] = match ($issue) {
             HealthIssue::NoHeartbeat => ['OK: Queue worker is running', '✅ Queue worker is running and health monitoring is now active.'],
             HealthIssue::Down => ['RECOVERED: Queue worker is back', '✅ Queue worker has recovered and is working normally.'],
+            HealthIssue::SyncDriver => ['OK: Queue health is being monitored again', '✅ The queue connection no longer uses the sync driver.'],
         };
 
         $this->sendMail($subject, $status."\n\nServer: ".$this->hostname());

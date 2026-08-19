@@ -51,6 +51,33 @@ class QueueHealthCheckCommandTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_warns_and_fails_when_the_queue_connection_is_sync(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue.default', 'sync');
+        Queue::fake();
+
+        $this->expectsReport(QueueHealthException::class);
+
+        Mail::shouldReceive('raw')->once()->withArgs(function (string $text, callable $callback) {
+            $this->assertStringContainsString('sync driver', $text);
+
+            $message = Mockery::mock(Message::class);
+            $message->shouldReceive('to')->andReturnSelf();
+            $message->shouldReceive('subject')->with(Mockery::on(fn ($s) => str_contains($s, 'WARNING: Queue health is not being monitored')))->andReturnSelf();
+            $callback($message);
+
+            return true;
+        });
+
+        $this->artisan('queue-health:check')->assertFailed();
+
+        Queue::assertNothingPushed();
+
+        $flag = json_decode(file_get_contents($this->flagPath), true);
+        $this->assertEquals('sync', $flag['issue']);
+    }
+
     public function test_does_not_alert_on_the_first_run_without_a_heartbeat(): void
     {
         config()->set('queue-health.alert_email', 'test@example.com');

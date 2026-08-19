@@ -21,6 +21,11 @@ class Settings
         return (int) config('queue-health.check_interval_minutes');
     }
 
+    public static function connectionDriver(): ?string
+    {
+        return config('queue.connections.'.config('queue.default').'.driver');
+    }
+
     public static function alertRepeatInterval(): ?string
     {
         $interval = config('queue-health.alert_repeat_interval');

@@ -6,6 +6,7 @@ enum HealthIssue: string
 {
     case NoHeartbeat = 'no_heartbeat';
     case Down = 'down';
+    case SyncDriver = 'sync';
 
     /**
      * A missing heartbeat is expected right after installing the package, so the

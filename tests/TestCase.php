@@ -11,4 +11,9 @@ abstract class TestCase extends BaseTestCase
     {
         return [QueueHealthCheckServiceProvider::class];
     }
+
+    protected function defineEnvironment($app): void
+    {
+        $app['config']->set('queue.default', 'database');
+    }
 }
