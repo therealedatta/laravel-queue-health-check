@@ -183,7 +183,7 @@ class QueueHealthCheckCommand extends Command
         };
 
         $detail = $issue === HealthIssue::SyncDriver
-            ? 'Set QUEUE_CONNECTION to a real queue driver and run a worker.'
+            ? 'Point the monitored connection at a real queue driver and run a worker.'
             : 'Last heartbeat: '.($this->heartbeat->lastSeenAt()?->toIso8601String() ?? 'never');
 
         $this->sendMail($subject, '⚠️ '.$this->alertMessage($issue, $minutes).".\n\n"
