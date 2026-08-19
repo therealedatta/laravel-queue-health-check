@@ -26,6 +26,10 @@ class QueueHealthTestCommand extends Command
             return self::FAILURE;
         }
 
+        if (Settings::connectionDriver() === 'sync') {
+            $this->warn('The queue connection uses the sync driver: this email proves mail works, not the queue.');
+        }
+
         QueueHealthTestJob::dispatch($email)
             ->onConnection(Settings::connection())
             ->onQueue(Settings::queue());

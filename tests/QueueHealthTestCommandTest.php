@@ -46,6 +46,16 @@ class QueueHealthTestCommandTest extends TestCase
         });
     }
 
+    public function test_warns_when_the_queue_connection_is_sync(): void
+    {
+        config()->set('queue.default', 'sync');
+        Queue::fake();
+
+        $this->artisan('queue-health:test', ['email' => 'user@example.com'])
+            ->expectsOutputToContain('sync driver')
+            ->assertSuccessful();
+    }
+
     public function test_uses_config_email_when_no_argument(): void
     {
         config()->set('queue-health.alert_email', 'admin@example.com');
