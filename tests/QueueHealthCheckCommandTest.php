@@ -8,6 +8,7 @@ use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use Symfony\Component\Mailer\Exception\TransportException;
 use TheRealEdatta\QueueHealthCheck\Exceptions\QueueHealthException;
 
 class QueueHealthCheckCommandTest extends TestCase
@@ -102,6 +103,24 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->assertFileExists($this->flagPath);
         $flag = json_decode(file_get_contents($this->flagPath), true);
         $this->assertEquals(1, $flag['alert_count']);
+    }
+
+    public function test_keeps_alert_state_and_reports_when_the_email_cannot_be_sent(): void
+    {
+        config()->set('queue-health.alert_email', 'test@example.com');
+        config()->set('queue-health.check_interval_minutes', 5);
+        Queue::fake();
+
+        Carbon::setTestNow('2024-01-15 10:00:00');
+        file_put_contents($this->logPath, Carbon::now()->subMinutes(15)->toIso8601String());
+
+        $this->expectsReport(QueueHealthException::class, TransportException::class);
+
+        Mail::shouldReceive('raw')->once()->andThrow(new TransportException('smtp is down'));
+
+        $this->artisan('queue-health:check')->assertSuccessful();
+
+        $this->assertFileExists($this->flagPath);
     }
 
     public function test_treats_an_unreadable_flag_as_a_new_incident(): void
@@ -319,11 +338,14 @@ class QueueHealthCheckCommandTest extends TestCase
         $this->artisan('queue-health:check')->assertSuccessful();
     }
 
-    private function expectsReport(string $exceptionClass): void
+    private function expectsReport(string ...$exceptionClasses): void
     {
-        $this->app->bind('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClass) {
+        $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClasses) {
             $handler = Mockery::mock(Handler::class.'[report]', [$app]);
-            $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
+
+            foreach ($exceptionClasses as $exceptionClass) {
+                $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
+            }
 
             return $handler;
         });

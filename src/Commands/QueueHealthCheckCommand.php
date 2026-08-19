@@ -10,6 +10,7 @@ use TheRealEdatta\QueueHealthCheck\Support\AlertFlag;
 use TheRealEdatta\QueueHealthCheck\Support\AlertState;
 use TheRealEdatta\QueueHealthCheck\Support\Heartbeat;
 use TheRealEdatta\QueueHealthCheck\Support\Settings;
+use Throwable;
 
 class QueueHealthCheckCommand extends Command
 {
@@ -85,13 +86,13 @@ class QueueHealthCheckCommand extends Command
 
     private function raiseAlert(int $minutesSince, int $alertCount): void
     {
-        $this->sendAlert($minutesSince);
-
         report(new QueueHealthException(
             "Queue worker has been unresponsive for {$minutesSince} minutes on ".$this->hostname()
         ));
 
         $this->flag->write(new AlertState(now(), $alertCount));
+
+        $this->sendAlert($minutesSince);
     }
 
     private function getNextAlertInterval(string $interval, int $alertCount): int
@@ -128,10 +129,15 @@ class QueueHealthCheckCommand extends Command
     {
         $recipients = Settings::recipients();
 
-        Mail::raw($body, function ($message) use ($recipients, $subject) {
-            $message->to($recipients)
-                ->subject('['.config('app.name').'] '.$subject);
-        });
+        try {
+            Mail::raw($body, function ($message) use ($recipients, $subject) {
+                $message->to($recipients)
+                    ->subject('['.config('app.name').'] '.$subject);
+            });
+        } catch (Throwable $e) {
+            report($e);
+            $this->error('queue-health could not send the email: '.$e->getMessage());
+        }
     }
 
     private function hostname(): string
