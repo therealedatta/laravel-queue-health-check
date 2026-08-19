@@ -22,11 +22,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Skip if tag already exists for this commit
+      - name: Look for a tag on this commit
         id: check_tag
         run: |
-          if git tag --points-at HEAD | grep -q '^v'; then
+          existing=$(git tag --points-at HEAD | grep '^v' | head -1 || true)
+
+          if [ -n "$existing" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "version=$existing" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -64,12 +67,27 @@ jobs:
 
           echo "version=v${major}.${minor}.${patch}" >> "$GITHUB_OUTPUT"
 
-      - name: Create tag and release
+      - name: Create tag
         if: steps.check_tag.outputs.skip == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${{ steps.next_version.outputs.version }}"
           git tag "$version"
           git push origin "$version"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.check_tag.outputs.version || steps.next_version.outputs.version }}"
+
+          if [ -z "$version" ]; then
+            echo "No version to release"
+            exit 0
+          fi
+
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "Release $version already exists"
+            exit 0
+          fi
+
           gh release create "$version" --generate-notes
