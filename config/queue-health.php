@@ -2,7 +2,7 @@
 
 return [
     'alert_email' => env('QUEUE_HEALTH_ALERT_EMAIL'),
-    'check_interval_minutes' => (int) env('QUEUE_HEALTH_CHECK_INTERVAL', 5) ?: 5,
+    'check_interval_minutes' => env('QUEUE_HEALTH_CHECK_INTERVAL', 5),
 
     /*
     |--------------------------------------------------------------------------
