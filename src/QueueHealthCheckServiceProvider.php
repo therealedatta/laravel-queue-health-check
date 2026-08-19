@@ -20,18 +20,19 @@ class QueueHealthCheckServiceProvider extends ServiceProvider
             __DIR__.'/../config/queue-health.php' => config_path('queue-health.php'),
         ], 'queue-health-config');
 
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                QueueHealthCheckCommand::class,
-                QueueHealthTestCommand::class,
-            ]);
+        if (! $this->app->runningInConsole()) {
+            return;
         }
 
-        $this->app->booted(function () {
+        $this->commands([
+            QueueHealthCheckCommand::class,
+            QueueHealthTestCommand::class,
+        ]);
+
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule) {
             $interval = config('queue-health.check_interval_minutes');
 
             if ($interval) {
-                $schedule = $this->app->make(Schedule::class);
                 $schedule->command('queue-health:check')
                     ->cron("*/{$interval} * * * *");
             }

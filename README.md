@@ -86,8 +86,8 @@ Each time an alert is sent, the package calls `report(new QueueHealthException(.
 
 ## Requirements
 
-- PHP >= 8.1
-- Laravel 10, 11, or 12
+- PHP >= 8.1 (>= 8.3 on Laravel 13)
+- Laravel 10, 11, 12, or 13
 
 Make sure `php artisan schedule:run` is in your crontab:
 
