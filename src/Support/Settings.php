@@ -48,9 +48,36 @@ class Settings
         return config('queue.connections.'.(static::connection() ?? config('queue.default')).'.driver');
     }
 
+    public static function downThresholdSeconds(): int
+    {
+        return (static::checkIntervalMinutes() * 2 * 60) - 1;
+    }
+
     public static function alertRepeatInterval(): ?string
     {
         return static::nonEmptyString(config('queue-health.alert_repeat_interval'));
+    }
+
+    /**
+     * Minutes to wait before the next alert, or null when only one is sent per
+     * incident. A comma-separated interval is a backoff schedule whose last
+     * step repeats indefinitely.
+     */
+    public static function nextAlertIntervalMinutes(int $alertCount): ?int
+    {
+        $interval = static::alertRepeatInterval();
+
+        if ($interval === null) {
+            return null;
+        }
+
+        if (str_contains($interval, ',')) {
+            $steps = array_map('intval', array_map('trim', explode(',', $interval)));
+
+            return $steps[min($alertCount - 1, count($steps) - 1)];
+        }
+
+        return (int) $interval;
     }
 
     private static function nonEmptyString(mixed $value): ?string

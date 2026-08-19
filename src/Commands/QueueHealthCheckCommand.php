@@ -63,7 +63,7 @@ class QueueHealthCheckCommand extends Command
 
         $secondsSince = $lastHeartbeat->diffInSeconds(now());
 
-        if ($secondsSince >= $this->thresholdSeconds()) {
+        if ($secondsSince >= Settings::downThresholdSeconds()) {
             $this->handleIssue(HealthIssue::Down, (int) floor($secondsSince / 60));
 
             return;
@@ -91,7 +91,7 @@ class QueueHealthCheckCommand extends Command
         }
 
         if ($state->alertCount === 0) {
-            if ($state->detectedAt->diffInSeconds(now()) < $this->thresholdSeconds()) {
+            if ($state->detectedAt->diffInSeconds(now()) < Settings::downThresholdSeconds()) {
                 return false;
             }
 
@@ -100,13 +100,12 @@ class QueueHealthCheckCommand extends Command
             return true;
         }
 
-        $repeatInterval = Settings::alertRepeatInterval();
+        $nextAlertInMinutes = Settings::nextAlertIntervalMinutes($state->alertCount);
 
-        if ($repeatInterval === null) {
+        if ($nextAlertInMinutes === null) {
             return false;
         }
 
-        $nextAlertInMinutes = $this->getNextAlertInterval($repeatInterval, $state->alertCount);
         $thresholdSecondsForRepeat = ($nextAlertInMinutes * 60) - 30;
 
         if ($state->alertedAt->diffInSeconds(now()) < $thresholdSecondsForRepeat) {
@@ -153,23 +152,6 @@ class QueueHealthCheckCommand extends Command
         event(new QueueUnhealthy($state->issue, $minutes, $state->alertCount + 1, $this->hostname()));
 
         $this->sendAlertMail($state->issue, $minutes);
-    }
-
-    private function getNextAlertInterval(string $interval, int $alertCount): int
-    {
-        if (str_contains($interval, ',')) {
-            $steps = array_map('intval', array_map('trim', explode(',', $interval)));
-            $index = min($alertCount - 1, count($steps) - 1);
-
-            return $steps[$index];
-        }
-
-        return (int) $interval;
-    }
-
-    private function thresholdSeconds(): int
-    {
-        return (Settings::checkIntervalMinutes() * 2 * 60) - 1;
     }
 
     private function alertMessage(HealthIssue $issue, int $minutes): string
