@@ -66,14 +66,14 @@ class QueueHealthTestCommandTest extends TestCase
 
         $this->artisan('queue-health:test')
             ->expectsOutput('No email provided. Pass an email argument or set QUEUE_HEALTH_ALERT_EMAIL.')
-            ->assertSuccessful();
+            ->assertFailed();
 
         Queue::assertNothingPushed();
     }
 
     private function expectsReport(string $exceptionClass): void
     {
-        $this->app->bind('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClass) {
+        $this->app->singleton('Illuminate\Contracts\Debug\ExceptionHandler', function ($app) use ($exceptionClass) {
             $handler = Mockery::mock(Handler::class.'[report]', [$app]);
             $handler->shouldReceive('report')->with(Mockery::type($exceptionClass))->once();
 

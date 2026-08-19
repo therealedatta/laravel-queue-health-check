@@ -13,7 +13,7 @@ class QueueHealthTestCommand extends Command
 
     protected $description = 'Dispatch a test email through the queue to verify it is working';
 
-    public function handle(): void
+    public function handle(): int
     {
         $email = $this->argument('email') ?? config('queue-health.alert_email');
 
@@ -23,7 +23,7 @@ class QueueHealthTestCommand extends Command
                 'queue-health:test failed: no email configured on '.gethostname()
             ));
 
-            return;
+            return self::FAILURE;
         }
 
         QueueHealthTestJob::dispatch($email)
@@ -31,5 +31,7 @@ class QueueHealthTestCommand extends Command
             ->onQueue(Settings::queue());
 
         $this->info("Test job dispatched to the queue. Check {$email} for the test email.");
+
+        return self::SUCCESS;
     }
 }
