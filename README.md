@@ -66,18 +66,16 @@ php artisan vendor:publish --tag=queue-health-config
 
 ### Upgrading From 1.3
 
-The state files moved out of `storage/logs`. Nothing breaks and no false alarm is raised, but the first check after upgrading finds no heartbeat at the new location, so it opens a `no_heartbeat` incident silently and, once the worker writes the first heartbeat, sends a single `OK: Queue worker is running` email. Two details worth knowing:
+Nothing to do. In 1.4 the files were renamed and the default directory moved out of `storage/logs`, and both changes are picked up on the first read: whichever pre-1.4 file exists is renamed into place, whether it sits in `storage/logs` or under its old name inside a directory you had already configured with `QUEUE_HEALTH_STORAGE_PATH`.
 
-- If the queue happens to be down while you upgrade, the alert arrives after the grace period (`check_interval_minutes * 2`) and reads `is not running` rather than `unresponsive`.
-- An incident that was open at that moment is forgotten, so no recovery email is sent for it.
+So the heartbeat and any open incident survive the upgrade: no confirmation email, no gap in alerting, nothing to delete by hand.
 
-The old files are no longer read and can be deleted:
+| Before 1.4 | From 1.4 |
+|---|---|
+| `storage/logs/queue-health.log` | `storage/app/queue-health/heartbeat` |
+| `storage/logs/queue-health-alert.flag` | `storage/app/queue-health/alert-flag.json` |
 
-```bash
-rm storage/logs/queue-health.log storage/logs/queue-health-alert.flag
-```
-
-To keep the state where it was, set `QUEUE_HEALTH_STORAGE_PATH` to the absolute path of your log directory.
+To keep the state where it was, set `QUEUE_HEALTH_STORAGE_PATH` to the absolute path of your log directory — the files are renamed in place there.
 
 ## Configuration
 

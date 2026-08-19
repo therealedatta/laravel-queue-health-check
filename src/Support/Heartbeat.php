@@ -31,4 +31,9 @@ class Heartbeat extends StateFile
     {
         return 'heartbeat';
     }
+
+    protected function legacyFilename(): string
+    {
+        return 'queue-health.log';
+    }
 }
